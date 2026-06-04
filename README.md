@@ -190,3 +190,7 @@ Most people will need to edit only these files:
 MIT License for the original project files. See `LICENSE`.
 
 Third-party code, fonts, icons, and build dependencies keep their own licenses. See `THIRD_PARTY_NOTICES.md`.
+
+## Demo Video
+
+Watch the demo on YouTube: [Smart Home Button demo](https://www.youtube.com/watch?v=51bXRBuSLpM)
