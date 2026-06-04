@@ -1,0 +1,600 @@
+---
+substitutions:
+  icon_play: "\uF000"
+  icon_pause: "\uF001"
+  icon_forward: "\uF002"
+  icon_backward: "\uF003"
+  icon_music: "\uF004"
+  icon_volume: "\uF005"
+
+external_components:
+  - source: ./components
+    components: [const, image, generic_image, media_source, sendspin]
+    refresh: 0s
+  
+
+font:
+  - file:
+      family: DM+Sans
+      weight: 300
+      type: gfonts
+    id: font_music_title
+    size: 14
+    bpp: 4
+    glyphs: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?-''_()"'
+
+  - file: ./src/assets/fonts/media_player_icons.ttf
+    id: media_player_icons
+    size: 24
+    bpp: 4
+    glyphs:
+    - ${icon_play}  # play-solid-full
+    - ${icon_pause}  # pause-solid-full
+    - ${icon_forward}  # forward-solid-full
+    - ${icon_backward}  # backward-solid-full
+    - ${icon_music}
+    - ${icon_volume}
+
+color:
+  - id: col_music_bg
+    hex: "000000"
+  - id: col_music_ring_track
+    hex: "000000"
+  - id: col_music_ring_progress
+    hex: "764CFF"
+  - id: col_music_play_btn
+    hex: "A98FFF"
+  - id: col_music_dark
+    hex: "1A1040"
+
+image:
+  - file: src/assets/images/place_holder.png
+    id: place_holder
+    type: RGB565
+    transparency: alpha_channel
+    resize: 80x80
+
+sendspin:
+  id: sendspin_hub
+
+media_player:
+  - platform: sendspin
+    id: sendspin_media_player
+    name: "M5Stack Dial"
+    volume_increment: 10
+
+generic_image:
+  - platform: sendspin
+    id: sendspin_cover_art
+    format: jpg
+    type: rgb565
+    resize: 80x80
+    image_source: ALBUM
+    on_image_decoded:
+      - logger.log: "Album image decoded"
+      - lambda: |-
+          lv_obj_t *obj = id(img_music_cover);
+          static lv_anim_t a;
+          lv_anim_init(&a);
+          lv_anim_set_var(&a, obj);
+          lv_anim_set_values(&a, LV_OPA_COVER, LV_OPA_TRANSP);
+          lv_anim_set_time(&a, 200);
+          lv_anim_set_exec_cb(&a, [](void *var, int32_t v) {
+            lv_obj_set_style_opa((lv_obj_t *)var, v, 0);
+          });
+          lv_anim_start(&a);
+      - delay: 200ms    
+      - lvgl.image.update:
+          id: img_music_cover
+          src: sendspin_cover_art
+      - lambda: |-
+          lv_obj_t *obj = id(img_music_cover);
+          static lv_anim_t a;
+          lv_anim_init(&a);
+          lv_anim_set_var(&a, obj);
+          lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+          lv_anim_set_time(&a, 300);
+          lv_anim_set_exec_cb(&a, [](void *var, int32_t v) {
+            lv_obj_set_style_opa((lv_obj_t *)var, v, 0);
+          });
+          lv_anim_start(&a);
+
+text_sensor:
+  - platform: sendspin
+    id: track_title
+    type: title
+    on_value:
+      - lambda: |-
+          if ( !x.empty() ) 
+            lv_label_set_text(id(lbl_music_title), x.c_str());
+          else
+            lv_label_set_text(id(lbl_music_title), "Ready to Play");
+
+  - platform: sendspin
+    id: track_artist
+    type: artist
+
+  - platform: sendspin
+    id: sendspin_playback_state
+    type: playback_state
+    internal: true
+    on_value:
+      - lambda: |-
+          ESP_LOGD("music", "SendSpin playback state: %s", x.c_str());
+          bool playing = (x == "playing");
+          id(music_playing) = playing;
+          lv_label_set_text(id(play_label), playing ? "${icon_pause}" : "${icon_play}");
+          auto duration = id(sendspin_hub).get_track_duration_ms();
+          if (duration > 0) {
+            id(local_duration_ms) = duration;
+            id(local_progress_ms) = id(sendspin_hub).get_track_progress_ms();
+            id(local_progress_sync_ms) = millis();
+          }
+      - script.execute: refresh_music_progress
+
+  - platform: homeassistant
+    id: media_player_status
+    entity_id: ${music_player_entity}
+    on_value:
+      - lambda: |-
+          ESP_LOGD("Media Player", "Read media player status: %s", x.c_str());
+          if ( x == "idle" || x == "paused"
+              || x == "unavailable" || x == "off"
+              || x == "unknown" )
+          {
+            id(music_playing) = false;
+            lv_label_set_text(id(play_label), "${icon_play}");
+          }
+          else if ( x == "playing" || x == "buffering" ) {
+            id(music_playing) = true;
+            lv_label_set_text(id(play_label), "${icon_pause}");
+          }
+          // read track progress and duration when state change
+          auto progress = id(sendspin_hub).get_track_progress_ms();
+          auto duration = id(sendspin_hub).get_track_duration_ms();
+          if (duration > 0) {
+            id(local_duration_ms) = duration;
+            id(local_progress_ms) = progress;
+            id(local_progress_sync_ms) = millis();
+          }
+      - script.execute: refresh_music_progress
+
+sensor:
+  - platform: homeassistant
+    id: ha_media_volume
+    entity_id: ${music_player_entity}
+    attribute: volume_level
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x != x) return;
+          if ((int32_t)(id(music_volume_override_until_ms) - millis()) > 0) return;
+          int v = (int)(x * 100.0f + 0.5f);
+          if (v < 0) v = 0;
+          if (v > 100) v = 100;
+          id(music_volume) = v;
+      - script.execute: refresh_music_volume
+
+  - platform: sendspin
+    id: sendspin_controller_volume
+    type: controller_volume
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x != x) return;
+          if ((int32_t)(id(music_volume_override_until_ms) - millis()) > 0) return;
+          int v = (int)(x + 0.5f);
+          if (v < 0) v = 0;
+          if (v > 100) v = 100;
+          id(music_volume) = v;
+      - script.execute: refresh_music_volume
+
+  - platform: homeassistant
+    id: ha_media_duration
+    entity_id: ${music_player_entity}
+    attribute: media_duration
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x != x || x <= 0) return;
+          id(local_duration_ms) = (int)(x * 1000.0f + 0.5f);
+      - script.execute: refresh_music_progress
+
+  - platform: homeassistant
+    id: ha_media_position
+    entity_id: ${music_player_entity}
+    attribute: media_position
+    internal: true
+    on_value:
+      - lambda: |-
+          if (x != x || x < 0) return;
+          id(local_progress_ms) = (int)(x * 1000.0f + 0.5f);
+          id(local_progress_sync_ms) = millis();
+      - script.execute: refresh_music_progress
+
+globals:
+  - id: in_music
+    type: bool
+    initial_value: 'false'
+  - id: music_volume
+    type: int
+    initial_value: '36'
+  - id: music_playing
+    type: bool
+    initial_value: 'false'
+  - id: music_progress
+    type: int
+    initial_value: '0'
+  - id: local_progress_ms
+    type: int
+    restore_value: false
+    initial_value: '0'
+  - id: local_duration_ms
+    type: int
+    restore_value: false
+    initial_value: '0'
+  - id: local_progress_sync_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: last_spin_progress_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: last_spin_progress_seen_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: music_state_override_until_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: music_volume_override_until_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+
+script:
+  - id: open_music
+    then:
+      - globals.set: {id: in_music, value: 'true'}
+      - globals.set: {id: in_menu, value: 'false'}
+      - script.execute: refresh_music_volume
+      - lvgl.page.show:
+          id: page_music
+          animation: MOVE_LEFT
+
+  - id: close_music
+    then:
+      - globals.set: {id: in_music, value: 'false'}
+      - lvgl.page.show:
+          id: page_clock
+          animation: MOVE_RIGHT
+
+  - id: play_next
+    then:
+      - sendspin.command:
+          id: sendspin_hub
+          command: next
+
+  - id: play_prev
+    then:
+      - sendspin.command:
+          id: sendspin_hub
+          command: previous
+  - id: play_toggle
+    then:
+      - lambda: |-
+          bool current_playing = id(sendspin_playback_state).state == "playing" ||
+                                 id(media_player_status).state == "playing" ||
+                                 id(media_player_status).state == "buffering";
+          bool will_play = !current_playing;
+          id(music_playing) = will_play;
+          id(music_state_override_until_ms) = millis() + 2500;
+          if (will_play && id(local_progress_sync_ms) == 0) {
+            id(local_progress_sync_ms) = millis();
+          }
+          lv_label_set_text(id(play_label), will_play ? "${icon_pause}" : "${icon_play}");
+      - if:
+          condition:
+            lambda: |-
+              return id(sendspin_playback_state).state == "playing" ||
+                     id(media_player_status).state == "playing" ||
+                     id(media_player_status).state == "buffering";
+          then:
+            - sendspin.command:
+                id: sendspin_hub
+                command: pause
+          else:
+            - sendspin.command:
+                id: sendspin_hub
+                command: play
+  - id: music_volume_up
+    then:
+      - lambda: |-
+          int v = id(music_volume) + 10;
+          if (v > 100) v = 100;
+          id(music_volume) = v;
+          id(music_volume_override_until_ms) = millis() + 1200;
+      - sendspin.volume_set:
+          id: sendspin_hub
+          volume: !lambda "return id(music_volume);"
+      - homeassistant.action:
+          action: media_player.volume_set
+          data:
+            entity_id: ${music_player_entity}
+          data_template:
+            volume_level: !lambda |-
+              char buf[8];
+              snprintf(buf, sizeof(buf), "%.2f", id(music_volume) / 100.0f);
+              return std::string(buf);
+      - script.execute: refresh_music_volume     
+
+  - id: music_volume_down
+    then:
+      - lambda: |-
+          int v = id(music_volume) - 10;
+          if (v < 0) v = 0;
+          id(music_volume) = v;
+          id(music_volume_override_until_ms) = millis() + 1200;
+      - sendspin.volume_set:
+          id: sendspin_hub
+          volume: !lambda "return id(music_volume);"
+      - homeassistant.action:
+          action: media_player.volume_set
+          data:
+            entity_id: ${music_player_entity}
+          data_template:
+            volume_level: !lambda |-
+              char buf[8];
+              snprintf(buf, sizeof(buf), "%.2f", id(music_volume) / 100.0f);
+              return std::string(buf);
+      - script.execute: refresh_music_volume
+
+  - id: refresh_music_volume
+    then:
+      - lambda: |-
+          int v = id(music_volume);
+          auto off = lv_color_hex(0x000000);
+          lv_obj_set_style_bg_color(id(vol_bar_1), v >  0 ? lv_color_hex(0xA98FFF) : off, 0);
+          lv_obj_set_style_bg_color(id(vol_bar_2), v > 14 ? lv_color_hex(0xA387FF) : off, 0);
+          lv_obj_set_style_bg_color(id(vol_bar_3), v > 28 ? lv_color_hex(0x9D7FFF) : off, 0);
+          lv_obj_set_style_bg_color(id(vol_bar_4), v > 42 ? lv_color_hex(0x9170FF) : off, 0);
+          lv_obj_set_style_bg_color(id(vol_bar_5), v > 57 ? lv_color_hex(0x8661FF) : off, 0);
+          lv_obj_set_style_bg_color(id(vol_bar_6), v > 71 ? lv_color_hex(0x7E57FF) : off, 0);
+          lv_obj_set_style_bg_color(id(vol_bar_7), v > 85 ? lv_color_hex(0x764CFF) : off, 0);
+          ESP_LOGI("music", "volume=%d", v);
+
+  - id: refresh_music_progress
+    then:
+      - lambda: |-
+          int dur = id(local_duration_ms);
+          int pos = id(local_progress_ms);
+          if (dur <= 0) {
+            id(music_progress) = 0;
+          } else {
+            if (pos < 0) pos = 0;
+            if (pos > dur) pos = dur;
+            id(music_progress) = (int)((float) pos / (float) dur * 100.0f + 0.5f);
+            if (id(music_progress) > 100) id(music_progress) = 100;
+          }
+          lv_arc_set_value(id(arc_music_progress), id(music_progress));
+          ESP_LOGD("music", "progress=%d", id(music_progress));
+
+lvgl:
+  pages:
+    - id: page_music
+      bg_color: col_music_bg
+      bg_opa: COVER
+      scrollbar_mode: "OFF"
+      widgets:
+        - obj:
+            align: TOP_LEFT
+            x: 0
+            y: 0
+            width: 240
+            height: 240
+            radius: 120
+            clip_corner: true
+            bg_color: col_music_bg
+            bg_opa: COVER
+            border_width: 0
+            pad_all: 0
+            scrollbar_mode: "OFF"
+            widgets:
+              - arc:
+                  id: arc_music_progress
+                  align: CENTER
+                  width: 232
+                  height: 232
+                  rotation: 270
+                  start_angle: 0
+                  end_angle: 360
+                  min_value: 0
+                  max_value: 100
+                  value: 0
+                  arc_color: col_music_ring_track
+                  arc_width: 5
+                  arc_opa: COVER
+                  arc_rounded: true
+                  adjustable: false
+                  clickable: false
+                  indicator:
+                    arc_color: col_music_ring_progress
+                    arc_width: 5
+                    arc_opa: COVER
+                    arc_rounded: true
+                  knob:
+                    bg_opa: TRANSP
+                    border_width: 0
+                    width: 0
+                    height: 0
+
+              - obj:
+                  x: 54
+                  y: 8
+                  width: 120
+                  height: 120
+                  radius: 60
+                  bg_opa: TRANSP
+                  border_width: 0
+                  clip_corner: true
+                  clickable: false
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - image:
+                        id: img_music_cover
+                        src: place_holder
+                        x: 8
+                        y: 6
+              - label:
+                  id: lbl_music_title
+                  x: 20
+                  y: 134
+                  width: 200
+                  text: "Ready to Play"
+                  text_font: font_music_title
+                  text_color: 0xFFFFFF
+                  text_align: CENTER
+                  on_boot:
+                    - lambda: |-
+                        lv_obj_set_style_anim_time(id(lbl_music_title), 15000, 0);
+                        lv_label_set_long_mode(id(lbl_music_title), LV_LABEL_LONG_SCROLL);
+                        lv_label_set_recolor(id(lbl_music_title), true);
+              - label:
+                  text_font: media_player_icons
+                  text: ${icon_volume}
+                  x: 70
+                  y: 150
+                  text_color: 0xFFFFFF
+
+              - obj: {id: vol_bar_1, x: 97,  y: 155, width: 6, height: 12, radius: 3, bg_color: 0xA98FFF, bg_opa: COVER, border_width: 0, clickable: false}
+              - obj: {id: vol_bar_2, x: 107, y: 155, width: 6, height: 12, radius: 3, bg_color: 0xA387FF, bg_opa: COVER, border_width: 0, clickable: false}
+              - obj: {id: vol_bar_3, x: 117, y: 155, width: 6, height: 12, radius: 3, bg_color: 0x000000, bg_opa: COVER, border_width: 0, clickable: false}
+              - obj: {id: vol_bar_4, x: 127, y: 155, width: 6, height: 12, radius: 3, bg_color: 0x000000, bg_opa: COVER, border_width: 0, clickable: false}
+              - obj: {id: vol_bar_5, x: 137, y: 155, width: 6, height: 12, radius: 3, bg_color: 0x000000, bg_opa: COVER, border_width: 0, clickable: false}
+              - obj: {id: vol_bar_6, x: 147, y: 155, width: 6, height: 12, radius: 3, bg_color: 0x000000, bg_opa: COVER, border_width: 0, clickable: false}
+              - obj: {id: vol_bar_7, x: 157, y: 155, width: 6, height: 12, radius: 3, bg_color: 0x000000, bg_opa: COVER, border_width: 0, clickable: false}
+
+              - button:
+                  x: 62
+                  y: 184
+                  width: 24
+                  height: 24
+                  bg_color: col_music_dark
+                  bg_opa: TRANSP
+                  shadow_opa: TRANSP
+                  border_width: 0
+                  scrollbar_mode: "OFF"
+                  id: prev_btn
+                  on_press:
+                    - script.execute: play_prev
+                  on_boot:
+                    - lambda: |-
+                        lv_group_remove_obj(id(prev_btn));
+                  widgets:
+                    - label:
+                        text_font: media_player_icons
+                        text: ${icon_backward}
+                        text_color: 0xFFFFFF
+                        align: CENTER
+
+              - button:
+                  x: 102
+                  y: 175
+                  id: play_btn
+                  width: 44
+                  height: 44
+                  radius: 22
+                  bg_color: col_music_play_btn
+                  bg_opa: COVER
+                  shadow_opa: TRANSP
+                  border_width: 0
+                  scrollbar_mode: "OFF"
+                  on_press:
+                    - script.execute: play_toggle
+                  on_boot:
+                    - lambda: |-
+                        lv_group_remove_obj(id(play_btn));
+                  widgets:
+                    - label:
+                        id: play_label
+                        text_font: media_player_icons
+                        text: ${icon_play}
+                        text_color: 0xFFFFFF
+                        align: CENTER
+
+              - button:
+                  id: next_btn
+                  x: 161
+                  y: 184
+                  width: 24
+                  height: 24
+                  bg_color: col_music_dark
+                  bg_opa: TRANSP
+                  shadow_opa: TRANSP
+                  border_width: 0
+                  scrollbar_mode: "OFF"
+                  on_press:
+                    - script.execute: play_next
+                  on_boot:
+                    - lambda: |-
+                        lv_group_remove_obj(next_btn);
+                  widgets:
+                    - label:
+                        text_font: media_player_icons
+                        text: ${icon_forward}
+                        text_color: 0xFFFFFF
+                        align: CENTER
+
+interval:
+  - interval: 200ms
+    then:
+      - lambda: |-
+          uint32_t now_ms = millis();
+          bool server_playing = id(sendspin_playback_state).state == "playing" ||
+                                id(media_player_status).state == "playing" ||
+                                id(media_player_status).state == "buffering";
+          bool use_local_state = (int32_t)(id(music_state_override_until_ms) - now_ms) > 0;
+          bool playing = use_local_state ? id(music_playing) : server_playing;
+          id(music_playing) = playing;
+          lv_label_set_text(id(play_label), playing ? "${icon_pause}" : "${icon_play}");
+
+          uint32_t spin_pos = id(sendspin_hub).get_track_progress_ms();
+          auto spin_dur = id(sendspin_hub).get_track_duration_ms();
+          if (spin_dur > 0) {
+            id(local_duration_ms) = spin_dur;
+            if (spin_pos != id(last_spin_progress_ms)) {
+              id(local_progress_ms) = spin_pos;
+              id(local_progress_sync_ms) = now_ms;
+              id(last_spin_progress_ms) = spin_pos;
+              id(last_spin_progress_seen_ms) = now_ms;
+            } else if (id(last_spin_progress_seen_ms) == 0) {
+              id(last_spin_progress_seen_ms) = now_ms;
+            }
+          }
+
+          int dur = id(local_duration_ms);
+          if (dur <= 0) {
+            id(music_progress) = 0;
+            lv_arc_set_value(id(arc_music_progress), 0);
+            id(local_progress_sync_ms) = now_ms;
+            return;
+          }
+
+          bool spin_progress_stale = spin_dur > 0 && (now_ms - id(last_spin_progress_seen_ms)) > 800;
+          if (playing && (spin_dur <= 0 || spin_progress_stale)) {
+            uint32_t elapsed_ms = id(local_progress_sync_ms) == 0 ? 200 : now_ms - id(local_progress_sync_ms);
+            if (elapsed_ms > 1000) elapsed_ms = 1000;
+            id(local_progress_ms) += elapsed_ms;
+            id(local_progress_sync_ms) = now_ms;
+          } else if (!playing) {
+            id(local_progress_sync_ms) = now_ms;
+          }
+
+          if (id(local_progress_ms) > dur) id(local_progress_ms) = dur;
+          if (id(local_progress_ms) < 0) id(local_progress_ms) = 0;
+          float progress = (float)id(local_progress_ms) / dur * 100.0f;
+          if (progress > 100) progress = 100;
+          id(music_progress) = (int)(progress + 0.5f);
+          lv_arc_set_value(id(arc_music_progress), id(music_progress));

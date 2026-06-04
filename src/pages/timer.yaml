@@ -1,0 +1,396 @@
+color:
+  - id: col_timer_bg
+    hex: "000000"
+  - id: col_timer_track
+    hex: "1e1e1e"
+  - id: col_timer_green
+    hex: "4ade80"
+  - id: col_timer_orange
+    hex: "fb923c"
+  - id: col_timer_red
+    hex: "f87171"
+  - id: col_timer_green_dim
+    hex: "166534"
+  - id: col_timer_dim_text
+    hex: "555555"
+  - id: col_timer_btn_bg
+    hex: "1a1a1a"
+  - id: col_timer_btn_border
+    hex: "2d2d2d"
+
+font:
+  - file:
+      family: Share Tech Mono
+      weight: 400
+      type: gfonts
+    id: font_timer_time
+    size: 42
+    bpp: 4
+    glyphs: "0123456789:"
+
+  - file:
+      family: DM+Sans
+      weight: 600
+      type: gfonts
+    id: font_timer_btn
+    size: 11
+    bpp: 4
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
+
+globals:
+  - id: in_timer
+    type: bool
+    initial_value: 'false'
+  - id: timer_running
+    type: bool
+    initial_value: 'false'
+  - id: timer_done
+    type: bool
+    initial_value: 'false'
+  - id: timer_total
+    type: int
+    initial_value: '300'
+  - id: timer_remaining
+    type: int
+    initial_value: '300'
+  - id: timer_blink
+    type: bool
+    initial_value: 'true'
+  - id: timer_unit
+    type: int
+    initial_value: '-1'
+  - id: timer_set_h
+    type: int
+    initial_value: '0'
+  - id: timer_set_m
+    type: int
+    initial_value: '5'
+  - id: timer_set_s
+    type: int
+    initial_value: '0'
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          if (!id(in_timer)) return;
+          if (id(timer_running) && id(timer_remaining) > 0) {
+            id(timer_remaining) -= 1;
+            if (id(timer_remaining) == 0) {
+              id(timer_running) = false;
+              id(timer_done)    = true;
+            }
+            id(refresh_timer).execute();
+            return;
+          }
+          if (id(timer_done)) {
+            id(timer_blink) = !id(timer_blink);
+            id(refresh_timer).execute();
+          }
+
+script:
+  - id: open_timer
+    then:
+      - globals.set: {id: in_timer,  value: 'true'}
+      - globals.set: {id: in_menu,   value: 'false'}
+      - script.execute: refresh_timer
+      - lvgl.page.show:
+          id: page_timer
+          animation: MOVE_LEFT
+
+  - id: close_timer
+    then:
+      - globals.set: {id: in_timer,   value: 'false'}
+      - globals.set: {id: timer_running, value: 'false'}
+      - script.execute: open_menu
+
+  - id: timer_toggle
+    then:
+      - lambda: |-
+          if (id(timer_done)) {
+            id(timer_done)      = false;
+            id(timer_running)   = false;
+            id(timer_blink)     = true;
+            id(timer_remaining) = id(timer_total);
+          } else if (id(timer_running)) {
+            id(timer_running) = false;
+          } else {
+            int total = id(timer_set_h) * 3600
+                      + id(timer_set_m) * 60
+                      + id(timer_set_s);
+            if (total > 0) {
+              id(timer_total)     = total;
+              id(timer_remaining) = total;
+              id(timer_running)   = true;
+              id(timer_unit)      = -1;
+            }
+          }
+      - script.execute: refresh_timer
+
+  - id: timer_encoder_up
+    then:
+      - lambda: |-
+          if (id(timer_running) || id(timer_done)) return;
+          int u = id(timer_unit);
+          if      (u == 0) id(timer_set_h) = (id(timer_set_h) + 1) % 24;
+          else if (u == 1) id(timer_set_m) = (id(timer_set_m) + 1) % 60;
+          else if (u == 2) id(timer_set_s) = (id(timer_set_s) + 1) % 60;
+      - script.execute: refresh_timer
+
+  - id: timer_encoder_down
+    then:
+      - lambda: |-
+          if (id(timer_running) || id(timer_done)) return;
+          int u = id(timer_unit);
+          if      (u == 0) id(timer_set_h) = ((id(timer_set_h) - 1) % 24 + 24) % 24;
+          else if (u == 1) id(timer_set_m) = ((id(timer_set_m) - 1) % 60 + 60) % 60;
+          else if (u == 2) id(timer_set_s) = ((id(timer_set_s) - 1) % 60 + 60) % 60;
+      - script.execute: refresh_timer
+
+  - id: refresh_timer
+    then:
+      - lambda: |-
+          int   rem     = id(timer_remaining);
+          int   total   = id(timer_total);
+          bool  running = id(timer_running);
+          bool  done    = id(timer_done);
+          bool  blink   = id(timer_blink);
+          int   unit    = id(timer_unit);
+          bool  editing = !running && !done;
+
+          float pct = editing ? 1.0f
+                    : (total > 0 ? (float)rem / (float)total : 0.0f);
+
+          // ── Accent colour based on progress ──
+          lv_color_t accent, dim;
+          if (done) {
+            accent = lv_color_hex(0xf87171);
+            dim    = lv_color_hex(0x7f1d1d);
+          } else if (editing || pct > 0.5f) {
+            accent = lv_color_hex(0x4ade80);
+            dim    = lv_color_hex(0x166534);
+          } else if (pct > 0.2f) {
+            accent = lv_color_hex(0xfb923c);
+            dim    = lv_color_hex(0x9a3412);
+          } else {
+            accent = lv_color_hex(0xf87171);
+            dim    = lv_color_hex(0x7f1d1d);
+          }
+
+          // ── Arc progress ──
+          lv_arc_set_value(id(arc_timer), (int)(pct * 100.0f));
+          lv_obj_set_style_arc_color(id(arc_timer), accent, LV_PART_INDICATOR);
+
+          // ── Time digits ──
+          int disp_h, disp_m, disp_s;
+          if (editing) {
+            disp_h = id(timer_set_h);
+            disp_m = id(timer_set_m);
+            disp_s = id(timer_set_s);
+          } else {
+            disp_h = rem / 3600;
+            disp_m = (rem % 3600) / 60;
+            disp_s = rem % 60;
+          }
+          static char tbuf[9];
+          snprintf(tbuf, sizeof(tbuf), "%02d:%02d:%02d", disp_h, disp_m, disp_s);
+          lv_label_set_text(id(lbl_timer_time), tbuf);
+          if (done && !blink) {
+            lv_obj_set_style_text_color(id(lbl_timer_time), lv_color_hex(0x222222), 0);
+          } else {
+            lv_obj_set_style_text_color(id(lbl_timer_time),
+              done ? accent : lv_color_hex(0xffffff), 0);
+          }
+
+          // ── Unit button highlights (HR / MIN / SEC) ──
+          lv_obj_t* unit_btns[3] = {
+            id(btn_timer_h), id(btn_timer_m), id(btn_timer_s)
+          };
+          for (int i = 0; i < 3; i++) {
+            bool active = editing && (unit == i);
+            lv_obj_set_style_bg_color(unit_btns[i],
+              active ? dim : lv_color_hex(0x1a1a1a), LV_PART_MAIN);
+            lv_obj_set_style_border_color(unit_btns[i],
+              active ? accent : lv_color_hex(0x2d2d2d), LV_PART_MAIN);
+            lv_obj_t* child = lv_obj_get_child(unit_btns[i], 0);
+            if (child)
+              lv_obj_set_style_text_color(child,
+                active ? accent : lv_color_hex(0x555555), 0);
+          }
+
+lvgl:
+  pages:
+    - id: page_timer
+      bg_color: col_timer_bg
+      bg_opa: COVER
+      scrollbar_mode: "OFF"
+      widgets:
+        - obj:
+            align: TOP_LEFT
+            x: 0
+            y: 0
+            width: 240
+            height: 240
+            radius: 120
+            clip_corner: true
+            bg_color: col_timer_bg
+            bg_opa: COVER
+            border_width: 0
+            pad_all: 0
+            scrollbar_mode: "OFF"
+            widgets:
+
+              - arc:
+                  id: arc_timer
+                  align: CENTER
+                  width: 232
+                  height: 232
+                  rotation: 270
+                  start_angle: 0
+                  end_angle: 360
+                  min_value: 0
+                  max_value: 100
+                  value: 100
+                  arc_color: col_timer_track
+                  arc_width: 8
+                  arc_opa: COVER
+                  arc_rounded: true
+                  adjustable: false
+                  clickable: false
+                  indicator:
+                    arc_color: col_timer_green
+                    arc_width: 8
+                    arc_opa: COVER
+                    arc_rounded: true
+                  knob:
+                    bg_opa: TRANSP
+                    border_width: 0
+                    width: 0
+                    height: 0
+
+              - label:
+                  id: lbl_timer_time
+                  align: CENTER
+                  y: -16
+                  text: "00:05:00"
+                  text_font: font_timer_time
+                  text_color: 0xFFFFFF
+
+              - obj:
+                  id: btn_timer_h
+                  align: CENTER
+                  x: -65
+                  y: 24
+                  width: 38
+                  height: 22
+                  radius: 11
+                  bg_color: col_timer_btn_bg
+                  bg_opa: COVER
+                  border_width: 1
+                  border_color: col_timer_btn_border
+                  border_opa: COVER
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  pad_all: 0
+                  on_click:
+                    - lambda: |-
+                        if (id(timer_running) || id(timer_done)) return;
+                        id(timer_unit) = (id(timer_unit) == 0) ? -1 : 0;
+                        id(refresh_timer).execute();
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "HR"
+                        text_font: font_timer_btn
+                        text_color: col_timer_dim_text
+
+              - obj:
+                  id: btn_timer_m
+                  align: CENTER
+                  x: -22
+                  y: 24
+                  width: 38
+                  height: 22
+                  radius: 11
+                  bg_color: col_timer_btn_bg
+                  bg_opa: COVER
+                  border_width: 1
+                  border_color: col_timer_btn_border
+                  border_opa: COVER
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  pad_all: 0
+                  on_click:
+                    - lambda: |-
+                        if (id(timer_running) || id(timer_done)) return;
+                        id(timer_unit) = (id(timer_unit) == 1) ? -1 : 1;
+                        id(refresh_timer).execute();
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "MIN"
+                        text_font: font_timer_btn
+                        text_color: col_timer_dim_text
+
+              - obj:
+                  id: btn_timer_s
+                  align: CENTER
+                  x: 21
+                  y: 24
+                  width: 38
+                  height: 22
+                  radius: 11
+                  bg_color: col_timer_btn_bg
+                  bg_opa: COVER
+                  border_width: 1
+                  border_color: col_timer_btn_border
+                  border_opa: COVER
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  pad_all: 0
+                  on_click:
+                    - lambda: |-
+                        if (id(timer_running) || id(timer_done)) return;
+                        id(timer_unit) = (id(timer_unit) == 2) ? -1 : 2;
+                        id(refresh_timer).execute();
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "SEC"
+                        text_font: font_timer_btn
+                        text_color: col_timer_dim_text
+
+              - obj:
+                  id: btn_timer_reset
+                  align: CENTER
+                  x: 64
+                  y: 24
+                  width: 38
+                  height: 22
+                  radius: 11
+                  bg_color: col_timer_btn_bg
+                  bg_opa: COVER
+                  border_width: 1
+                  border_color: col_timer_btn_border
+                  border_opa: COVER
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  pad_all: 0
+                  on_click:
+                    - lambda: |-
+                        id(timer_running)   = false;
+                        id(timer_done)      = false;
+                        id(timer_blink)     = true;
+                        id(timer_unit)      = -1;
+                        id(timer_set_h)     = 0;
+                        id(timer_set_m)     = 5;
+                        id(timer_set_s)     = 0;
+                        id(timer_total)     = 300;
+                        id(timer_remaining) = 300;
+                        id(refresh_timer).execute();
+                  widgets:
+                    - label:
+                        align: CENTER
+                        text: "RST"
+                        text_font: font_timer_btn
+                        text_color: col_timer_dim_text

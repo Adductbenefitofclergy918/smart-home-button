@@ -1,0 +1,136 @@
+packages:
+  hardware:    !include src/main/hardware.yaml
+  entities:    !include src/main/entities.yaml
+  load_page:   !include src/pages/load.yaml
+  clock_page:  !include src/pages/main.yaml
+  menu_page:   !include src/pages/menu.yaml
+  light_page:  !include src/pages/light.yaml
+  air_page:    !include src/pages/air.yaml
+  music_page:  !include src/pages/music.yaml
+  fridge_page: !include src/pages/fridge.yaml
+  timer_page:  !include src/pages/timer.yaml
+
+esphome:
+  name: m5stack-dialv1
+  friendly_name: M5Stack Dial
+  on_boot:
+    - priority: 800
+      then:
+        - switch.turn_on: power_hold
+    - priority: -100
+      then:
+        - pcf8563.read_time:
+        - light.turn_on:
+            id: display_backlight
+            brightness: 100%
+        - script.execute: update_loading_page
+
+esp32:
+  board: m5stack-stamps3
+  variant: esp32s3
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_BROWNOUT_DET: "n"
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+  on_client_connected:
+    - if:
+        condition:
+          lambda: 'return (0 == client_info.find("Home Assistant "));'
+        then:
+          - script.execute: on_ha_connected
+  on_client_disconnected:
+    - if:
+        condition:
+          lambda: 'return (0 == client_info.find("Home Assistant "));'
+        then:
+          - globals.set:
+              id: ha_connected
+              value: 'false'
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: !secret ap_ssid
+    password: !secret ap_password
+
+captive_portal:
+
+globals:
+  - id: ha_connected
+    type: bool
+    initial_value: 'false'
+
+image:
+  - file: src/assets/images/logo.png
+    id: logo_img
+    type: RGB565
+    transparency: alpha_channel
+    resize: 72x72
+  - file: src/assets/images/scene.png
+    id: img_scene
+    type: RGB565
+    transparency: alpha_channel
+    resize: 24x24
+  - file: src/assets/images/bulb.png
+    id: img_light
+    type: RGB565
+    transparency: alpha_channel
+    resize: 24x24
+  - file: src/assets/images/ac.png
+    id: img_ac
+    type: RGB565
+    transparency: alpha_channel
+    resize: 24x24
+  - file: src/assets/images/music.png
+    id: img_music
+    type: RGB565
+    transparency: alpha_channel
+    resize: 24x24
+  - file: src/assets/images/palette.png
+    id: img_palette
+    type: RGB565
+    transparency: alpha_channel
+    resize: 24x24
+  - file: src/assets/images/brightness.png
+    id: img_brightness
+    type: RGB565
+    transparency: alpha_channel
+    resize: 24x24
+  - file: src/assets/images/light.png
+    id: img_dengguang
+    type: RGB565
+    transparency: alpha_channel
+    resize: 24x24
+
+color:
+  - id: col_bg
+    hex: "050812"
+  - id: col_text_pri
+    hex: "EEF2FF"
+  - id: col_text_sec
+    hex: "6B7FCC"
+
+lvgl:
+  displays:
+    - round_display
+  touchscreens:
+    - touch
+  encoders:
+    - sensor: encoder
+      enter_button: front_button
+  buffer_size: "12%"
+  color_depth: 16
+  bg_color: col_bg
+  default_font: font_lbl

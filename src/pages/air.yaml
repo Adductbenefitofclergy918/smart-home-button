@@ -1,0 +1,534 @@
+font:
+  - file:
+      family: DM+Sans
+      weight: 500
+      type: gfonts
+    id: font_air_temp
+    size: 70
+    bpp: 4
+    glyphs: "0123456789.\xc2\xb0"
+
+  - file:
+      family: DM+Sans
+      weight: 500
+      type: gfonts
+    id: font_air_label
+    size: 14
+    bpp: 4
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .:%\xc2\xb0/-"
+
+  - file: "gfonts://Roboto"
+    id: font_air_degree
+    size: 40
+    bpp: 4
+    glyphs: "\xc2\xb0"
+
+image:
+  - file: src/assets/images/air_page/fan_off.png
+    id: img_air_fan_off
+    type: RGB565
+    transparency: alpha_channel
+    resize: 25x25
+
+  - file: src/assets/images/air_page/fan_on.png
+    id: img_air_fan_on
+    type: RGB565
+    transparency: alpha_channel
+    resize: 25x25
+
+  - file: src/assets/images/air_page/power_off.png
+    id: img_air_power_off
+    type: RGB565
+    transparency: alpha_channel
+    resize: 25x25
+
+  - file: src/assets/images/air_page/power_on.png
+    id: img_air_power_on
+    type: RGB565
+    transparency: alpha_channel
+    resize: 25x25
+
+  - file: src/assets/images/air_page/swing_off.png
+    id: img_air_swing_off
+    type: RGB565
+    transparency: alpha_channel
+    resize: 25x25
+
+  - file: src/assets/images/air_page/swing_on.png
+    id: img_air_swing_on
+    type: RGB565
+    transparency: alpha_channel
+    resize: 25x25
+
+color:
+  - id: col_air_bg
+    hex: "000000"
+  - id: col_air_inner
+    hex: "000000"
+  - id: col_air_btn_bg
+    hex: "121829"
+  - id: col_air_btn_mid
+    hex: "08202D"
+  - id: col_air_blue
+    hex: "00C5ED"
+  - id: col_air_blue_dim
+    hex: "457AA6"
+  - id: col_air_red
+    hex: "FF120C"
+  - id: col_air_text_dim
+    hex: "375274"
+  - id: col_air_seg_off
+    hex: "3C4048"
+
+globals:
+  - id: air_temp
+    type: int
+    initial_value: '40'   # stored as 2x degrees
+  - id: in_air
+    type: bool
+    initial_value: 'false'
+  - id: air_mode
+    type: int
+    initial_value: '0'    # 0=temp, 1=fan speed
+  - id: air_fan_speed
+    type: int
+    initial_value: '3'    # 1-5
+  - id: air_btn_power_active
+    type: bool
+    initial_value: 'true'
+  - id: air_btn_swing_active
+    type: bool
+    initial_value: 'false'
+  - id: air_encoder_step_accum
+    type: int
+    initial_value: '0'
+
+sensor:
+  - platform: homeassistant
+    id: ha_air_target_temp
+    entity_id: ${climate_entity}
+    attribute: temperature
+    on_value:
+      - lambda: 'id(air_temp) = (int)(x) * 2;'
+      - script.execute: refresh_air
+
+  - platform: homeassistant
+    id: ha_air_current_temp
+    entity_id: ${climate_entity}
+    attribute: current_temperature
+    on_value:
+      - script.execute: refresh_air
+
+  - platform: homeassistant
+    id: ha_air_humidity
+    entity_id: ${climate_entity}
+    attribute: current_humidity
+    on_value:
+      - script.execute: refresh_air
+
+text_sensor:
+  - platform: homeassistant
+    id: ha_air_hvac_mode
+    entity_id: ${climate_entity}
+    on_value:
+      - lambda: 'id(air_btn_power_active) = (x != "off");'
+      - script.execute: refresh_air
+
+script:
+  - id: open_air
+    then:
+      - globals.set: {id: in_air, value: 'true'}
+      - globals.set: {id: in_menu, value: 'false'}
+      - globals.set: {id: air_encoder_step_accum, value: '0'}
+      - script.execute: refresh_air
+      - lvgl.page.show:
+          id: page_air
+          animation: MOVE_LEFT
+
+  - id: close_air
+    then:
+      - globals.set: {id: in_air, value: 'false'}
+      - globals.set: {id: air_encoder_step_accum, value: '0'}
+      - script.execute: open_menu
+
+  - id: air_temp_up
+    then:
+      - lambda: |-
+          int v = id(air_temp) + 2;
+          if (v > 52) v = 52;  // 26C
+          id(air_temp) = v;
+      - homeassistant.service:
+          service: climate.set_temperature
+          data:
+            entity_id: ${climate_entity}
+            temperature: !lambda 'return std::to_string((int)(id(air_temp) / 2));'
+      - script.execute: refresh_air
+
+  - id: air_temp_down
+    then:
+      - lambda: |-
+          int v = id(air_temp) - 2;
+          if (v < 34) v = 34;  // 17C
+          id(air_temp) = v;
+      - homeassistant.service:
+          service: climate.set_temperature
+          data:
+            entity_id: ${climate_entity}
+            temperature: !lambda 'return std::to_string((int)(id(air_temp) / 2));'
+      - script.execute: refresh_air
+
+  - id: air_toggle_mode
+    then:
+      - lambda: |-
+          id(air_mode) = (id(air_mode) == 0) ? 1 : 0;
+          id(air_encoder_step_accum) = 0;
+      - script.execute: refresh_air
+
+  - id: air_fan_up
+    then:
+      - lambda: |-
+          int v = id(air_fan_speed) + 1;
+          if (v > 5) v = 5;
+          id(air_fan_speed) = v;
+      - script.execute: refresh_air
+
+  - id: air_fan_down
+    then:
+      - lambda: |-
+          int v = id(air_fan_speed) - 1;
+          if (v < 1) v = 1;
+          id(air_fan_speed) = v;
+      - script.execute: refresh_air
+
+  - id: refresh_air
+    then:
+      - lambda: |-
+          int t = id(air_temp);
+          static char tbuf[10];
+          if (t % 2 == 0) {
+            snprintf(tbuf, sizeof(tbuf), "%d", t / 2);
+          } else {
+            snprintf(tbuf, sizeof(tbuf), "%d.5", t / 2);
+          }
+          lv_label_set_text(id(lbl_air_temp), tbuf);
+
+          float ct = id(ha_air_current_temp).state;
+          float hm = id(ha_air_humidity).state;
+          if (isnan(ct)) ct = (float)(t / 2);
+          if (isnan(hm)) hm = 60.0f;
+
+          static char sbuf[40];
+          snprintf(sbuf, sizeof(sbuf), "Temp %.0f\xc2\xb0  Humid %.0f%%", ct, hm);
+          lv_label_set_text(id(lbl_air_info), sbuf);
+
+          lv_arc_set_value(id(air_set_arc), t);
+
+          lv_img_set_src(id(img_air_fan_btn), id(air_mode) == 1 ? id(img_air_fan_on) : id(img_air_fan_off));
+          lv_img_set_src(id(img_air_power_btn), id(air_btn_power_active) ? id(img_air_power_on) : id(img_air_power_off));
+          lv_img_set_src(id(img_air_swing_btn), id(air_btn_swing_active) ? id(img_air_swing_on) : id(img_air_swing_off));
+
+          lv_obj_set_style_border_width(id(btn_air_fan), id(air_mode) == 1 ? 2 : 0, LV_PART_MAIN);
+          lv_obj_set_style_border_color(id(btn_air_fan), lv_color_hex(0x00D7FF), LV_PART_MAIN);
+
+          lv_obj_set_style_border_width(id(btn_air_power), id(air_btn_power_active) ? 2 : 0, LV_PART_MAIN);
+          lv_obj_set_style_border_color(id(btn_air_power), lv_color_hex(0x00D7FF), LV_PART_MAIN);
+
+          lv_obj_set_style_border_width(id(btn_air_swing), id(air_btn_swing_active) ? 2 : 0, LV_PART_MAIN);
+          lv_obj_set_style_border_color(id(btn_air_swing), lv_color_hex(0x00D7FF), LV_PART_MAIN);
+
+          int fs = id(air_fan_speed);
+          lv_obj_set_style_arc_color(id(fan_seg_1), lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
+          lv_obj_set_style_arc_color(id(fan_seg_2), lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
+          lv_obj_set_style_arc_color(id(fan_seg_3), lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
+          lv_obj_set_style_arc_color(id(fan_seg_4), lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
+          lv_obj_set_style_arc_color(id(fan_seg_5), lv_color_hex(0xFFFFFF), LV_PART_INDICATOR);
+          lv_obj_set_style_arc_opa(id(fan_seg_1), fs >= 1 ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_INDICATOR);
+          lv_obj_set_style_arc_opa(id(fan_seg_2), fs >= 2 ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_INDICATOR);
+          lv_obj_set_style_arc_opa(id(fan_seg_3), fs >= 3 ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_INDICATOR);
+          lv_obj_set_style_arc_opa(id(fan_seg_4), fs >= 4 ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_INDICATOR);
+          lv_obj_set_style_arc_opa(id(fan_seg_5), fs >= 5 ? LV_OPA_COVER : LV_OPA_TRANSP, LV_PART_INDICATOR);
+
+lvgl:
+  pages:
+    - id: page_air
+      bg_color: col_air_bg
+      bg_opa: COVER
+      scrollbar_mode: "OFF"
+      on_load:
+        - script.execute: refresh_air
+      widgets:
+        - obj:
+            align: TOP_LEFT
+            x: 0
+            y: 0
+            width: 240
+            height: 240
+            radius: 120
+            clip_corner: true
+            bg_color: col_air_bg
+            bg_opa: COVER
+            border_width: 0
+            pad_all: 0
+            scrollbar_mode: "OFF"
+            widgets:
+              - obj:
+                  x: 10
+                  y: 10
+                  width: 220
+                  height: 220
+                  radius: 110
+                  bg_color: col_air_inner
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
+
+              - arc:
+                  x: 10
+                  y: 10
+                  width: 220
+                  height: 220
+                  start_angle: 45
+                  end_angle: 315
+                  min_value: 0
+                  max_value: 100
+                  value: 100
+                  arc_color: 0x1A1D28
+                  arc_opa: COVER
+                  arc_width: 4
+                  arc_rounded: true
+                  adjustable: false
+                  clickable: false
+                  indicator:
+                    arc_opa: TRANSP
+                  knob:
+                    bg_opa: TRANSP
+                    border_width: 0
+                    width: 0
+                    height: 0
+
+              - arc:
+                  id: air_set_arc
+                  x: 10
+                  y: 10
+                  width: 220
+                  height: 220
+                  start_angle: 45
+                  end_angle: 315
+                  min_value: 34
+                  max_value: 52
+                  value: 40
+                  arc_color: 0x000000
+                  arc_opa: TRANSP
+                  arc_width: 4
+                  arc_rounded: true
+                  adjustable: false
+                  clickable: false
+                  indicator:
+                    arc_color: col_air_blue
+                    arc_width: 4
+                    arc_opa: COVER
+                    arc_rounded: true
+                  knob:
+                    bg_color: col_air_blue
+                    bg_opa: COVER
+                    border_width: 0
+                    width: 10
+                    height: 10
+                    radius: 5
+
+              - arc:
+                  id: fan_seg_1
+                  x: 10
+                  y: 10
+                  width: 220
+                  height: 220
+                  start_angle: 334
+                  end_angle: 341
+                  min_value: 0
+                  max_value: 100
+                  value: 100
+                  arc_color: 0x454545
+                  arc_opa: COVER
+                  arc_width: 4
+                  adjustable: false
+                  clickable: false
+                  indicator: {arc_color: 0xFFFFFF, arc_width: 4, arc_opa: TRANSP, arc_rounded: true}
+                  knob: {bg_opa: TRANSP, border_width: 0, width: 0, height: 0}
+
+              - arc:
+                  id: fan_seg_2
+                  x: 10
+                  y: 10
+                  width: 220
+                  height: 220
+                  start_angle: 345
+                  end_angle: 352
+                  min_value: 0
+                  max_value: 100
+                  value: 100
+                  arc_color: 0x454545
+                  arc_opa: COVER
+                  arc_width: 4
+                  adjustable: false
+                  clickable: false
+                  indicator: {arc_color: 0xFFFFFF, arc_width: 4, arc_opa: TRANSP, arc_rounded: true}
+                  knob: {bg_opa: TRANSP, border_width: 0, width: 0, height: 0}
+
+              - arc:
+                  id: fan_seg_3
+                  x: 10
+                  y: 10
+                  width: 220
+                  height: 220
+                  start_angle: 356
+                  end_angle: 3
+                  min_value: 0
+                  max_value: 100
+                  value: 100
+                  arc_color: 0x454545
+                  arc_opa: COVER
+                  arc_width: 4
+                  adjustable: false
+                  clickable: false
+                  indicator: {arc_color: 0xFFFFFF, arc_width: 4, arc_opa: TRANSP, arc_rounded: true}
+                  knob: {bg_opa: TRANSP, border_width: 0, width: 0, height: 0}
+
+              - arc:
+                  id: fan_seg_4
+                  x: 10
+                  y: 10
+                  width: 220
+                  height: 220
+                  start_angle: 8
+                  end_angle: 15
+                  min_value: 0
+                  max_value: 100
+                  value: 100
+                  arc_color: 0x454545
+                  arc_opa: COVER
+                  arc_width: 4
+                  adjustable: false
+                  clickable: false
+                  indicator: {arc_color: 0xFFFFFF, arc_width: 4, arc_opa: TRANSP, arc_rounded: true}
+                  knob: {bg_opa: TRANSP, border_width: 0, width: 0, height: 0}
+
+              - arc:
+                  id: fan_seg_5
+                  x: 10
+                  y: 10
+                  width: 220
+                  height: 220
+                  start_angle: 19
+                  end_angle: 26
+                  min_value: 0
+                  max_value: 100
+                  value: 100
+                  arc_color: 0x454545
+                  arc_opa: COVER
+                  arc_width: 4
+                  adjustable: false
+                  clickable: false
+                  indicator: {arc_color: 0xFFFFFF, arc_width: 4, arc_opa: TRANSP, arc_rounded: true}
+                  knob: {bg_opa: TRANSP, border_width: 0, width: 0, height: 0}
+
+              - label:
+                  id: lbl_air_temp
+                  align: CENTER
+                  y: -45
+                  text: "24"
+                  text_font: font_air_temp
+                  text_color: 0xFFFFFF
+                  text_align: CENTER
+
+              - label:
+                  id: lbl_air_temp_degree
+                  align: CENTER
+                  x: 50
+                  y: -63
+                  text: "°"
+                  text_font: font_air_degree
+                  text_color: 0xFFFFFF
+                  text_align: CENTER
+
+              - label:
+                  id: lbl_air_info
+                  align: CENTER
+                  y: 8
+                  text: "Temp 28\xc2\xb0  Humid 60%"
+                  text_font: font_air_label
+                  text_color: 0x5A7598
+                  text_align: CENTER
+
+              - obj:
+                  id: btn_air_fan
+                  align: BOTTOM_MID
+                  x: -46
+                  y: -50
+                  width: 37
+                  height: 37
+                  radius: 19
+                  bg_color: col_air_btn_bg
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  on_click:
+                    - script.execute: air_toggle_mode
+                  widgets:
+                    - image:
+                        id: img_air_fan_btn
+                        align: CENTER
+                        src: img_air_fan_off
+
+              - obj:
+                  id: btn_air_power
+                  align: BOTTOM_MID
+                  x: 0
+                  y: -50
+                  width: 37
+                  height: 37
+                  radius: 19
+                  bg_color: col_air_btn_mid
+                  bg_opa: COVER
+                  border_width: 1
+                  border_color: col_air_blue
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  on_click:
+                    - lambda: |-
+                        id(air_btn_power_active) = !id(air_btn_power_active);
+                    - homeassistant.service:
+                        service: climate.set_hvac_mode
+                        data:
+                          entity_id: ${climate_entity}
+                          hvac_mode: !lambda 'return id(air_btn_power_active) ? std::string("auto") : std::string("off");'
+                    - script.execute: refresh_air
+                  widgets:
+                    - image:
+                        id: img_air_power_btn
+                        align: CENTER
+                        src: img_air_power_off
+
+              - obj:
+                  id: btn_air_swing
+                  align: BOTTOM_MID
+                  x: 46
+                  y: -50
+                  width: 37
+                  height: 37
+                  radius: 19
+                  bg_color: col_air_btn_bg
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  on_click:
+                    - lambda: |-
+                        id(air_btn_swing_active) = !id(air_btn_swing_active);
+                    - script.execute: refresh_air
+                  widgets:
+                    - image:
+                        id: img_air_swing_btn
+                        align: CENTER
+                        src: img_air_swing_off

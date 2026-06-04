@@ -1,0 +1,636 @@
+image:
+  - file: "src/assets/images/palette.png"
+    id: light_img_palette
+    type: RGB565
+    transparency: alpha_channel
+    resize: 22x22
+
+  - file: src/assets/images/light.png
+    id: light_img_dengguang
+    type: RGB565
+    transparency: alpha_channel
+    resize: 20x20
+
+  - file: src/assets/images/gradient.png
+    id: light_img_gradient
+    type: RGB565
+    transparency: alpha_channel
+    resize: 22x22
+
+font:
+  - file:
+      family: DM+Sans
+      weight: 900
+      type: gfonts
+    id: font_light_big
+    size: 59
+    bpp: 4
+    glyphs: "0123456789"
+
+  - file: "gfonts://DM+Sans"
+    id: font_light_pct
+    size: 24
+    bpp: 4
+    glyphs: "%"
+
+  - file:
+      family: DM+Sans
+      weight: 900
+      type: gfonts
+    id: font_light_label
+    size: 14
+    bpp: 4
+    glyphs: "ABCEGHIKLNOPRSTUY "
+
+  - file:
+      family: DM+Sans
+      weight: 900
+      type: gfonts
+    id: font_cp_hue
+    size: 20
+    bpp: 4
+    glyphs: "0123456789ABCDEF"
+
+color:
+  - id: col_light_bg
+    hex: "000000"
+  - id: col_light_track
+    hex: "282729"
+  - id: col_light_blue
+    hex: "5ABBFD"
+  - id: col_light_purple
+    hex: "A792E8"
+  - id: col_light_yellow
+    hex: "FDC003"
+  - id: col_light_orange
+    hex: "A98FFF"
+  - id: col_light_label_bg
+    hex: "282729"
+  - id: col_light_label_text
+    hex: "D2A848"
+  - id: col_light_icon_bg
+    hex: "262626"
+
+globals:
+  - id: light_brightness
+    type: int
+    initial_value: '75'
+  - id: in_light
+    type: bool
+    initial_value: 'false'
+  - id: light_on
+    type: bool
+    initial_value: 'false'
+  - id: light_color_h
+    type: int
+    initial_value: '252'
+  - id: light_color_h_prev
+    type: int
+    initial_value: '252'
+  - id: in_colorpicker
+    type: bool
+    initial_value: 'false'
+  - id: light_color_r
+    type: int
+    initial_value: '169'
+  - id: light_color_g
+    type: int
+    initial_value: '143'
+  - id: light_color_b
+    type: int
+    initial_value: '255'
+  - id: light_gradient_mode
+    type: int
+    initial_value: '-1'
+
+script:
+  - id: open_light
+    then:
+      - globals.set: {id: in_light, value: 'true'}
+      - globals.set: {id: in_menu, value: 'false'}
+      - script.execute: refresh_light_arc
+      - lvgl.page.show:
+          id: page_light
+          animation: MOVE_LEFT
+
+  - id: close_light
+    then:
+      - globals.set: {id: in_light, value: 'false'}
+      - globals.set: {id: in_colorpicker, value: 'false'}
+      - script.execute: open_menu
+
+  - id: toggle_light_onoff
+    then:
+      - lambda: |-
+          id(light_on) = !id(light_on);
+          lv_color_t col = id(light_on)
+            ? lv_color_make(id(light_color_r), id(light_color_g), id(light_color_b))
+            : lv_color_hex(0x262626);
+          lv_obj_set_style_border_color(id(btn_dengguang), col, LV_STATE_DEFAULT);
+          lv_obj_set_style_shadow_color(id(btn_dengguang), col, LV_STATE_DEFAULT);
+      - if:
+          condition:
+            lambda: 'return id(light_on);'
+          then:
+            - light.turn_on:
+                id: led_strip
+                brightness: !lambda "return id(light_brightness) / 100.0f;"
+                red: !lambda "return id(light_color_r) / 255.0f;"
+                green: !lambda "return id(light_color_g) / 255.0f;"
+                blue: !lambda "return id(light_color_b) / 255.0f;"
+          else:
+            - light.turn_off: led_strip
+
+  - id: open_colorpicker
+    then:
+      - lambda: |-
+          id(light_color_h_prev) = id(light_color_h);
+          id(light_gradient_mode) = -1;
+      - globals.set: {id: in_light, value: 'false'}
+      - globals.set: {id: in_colorpicker, value: 'true'}
+      - lvgl.page.show:
+          id: page_colorpicker
+          animation: MOVE_LEFT
+
+  - id: close_colorpicker
+    then:
+      - lambda: "id(light_color_h) = id(light_color_h_prev);"
+      - globals.set: {id: in_colorpicker, value: 'false'}
+      - globals.set: {id: in_light, value: 'true'}
+      - lvgl.page.show:
+          id: page_light
+          animation: MOVE_RIGHT
+
+  - id: confirm_light_color
+    then:
+      - lambda: |-
+          int h = id(light_color_h);
+          int hi = (h / 60) % 6;
+          float f = h / 60.0f - (int)(h / 60.0f);
+          int q = (int)(255.0f * (1.0f - f));
+          int t = (int)(255.0f * f);
+          int r8, g8, b8;
+          switch (hi) {
+            case 0: r8=255; g8=t;   b8=0;   break;
+            case 1: r8=q;   g8=255; b8=0;   break;
+            case 2: r8=0;   g8=255; b8=t;   break;
+            case 3: r8=0;   g8=q;   b8=255; break;
+            case 4: r8=t;   g8=0;   b8=255; break;
+            default: r8=255; g8=0;  b8=q;   break;
+          }
+          id(light_color_r) = r8;
+          id(light_color_g) = g8;
+          id(light_color_b) = b8;
+            id(light_gradient_mode) = -1;
+      - globals.set: {id: in_colorpicker, value: 'false'}
+      - globals.set: {id: in_light, value: 'true'}
+      - script.execute: refresh_light_arc
+      - if:
+          condition:
+            lambda: 'return id(light_on);'
+          then:
+            - light.control:
+                id: led_strip
+                red: !lambda "return id(light_color_r) / 255.0f;"
+                green: !lambda "return id(light_color_g) / 255.0f;"
+                blue: !lambda "return id(light_color_b) / 255.0f;"
+      - lvgl.page.show:
+          id: page_light
+          animation: MOVE_RIGHT
+
+  - id: light_hue_up
+    then:
+      - lambda: |-
+          int h = id(light_color_h) + 3;
+          if (h >= 360) h -= 360;
+          id(light_color_h) = h;
+      - script.execute: refresh_color_preview
+
+  - id: light_hue_down
+    then:
+      - lambda: |-
+          int h = id(light_color_h) - 3;
+          if (h < 0) h += 360;
+          id(light_color_h) = h;
+      - script.execute: refresh_color_preview
+
+  - id: refresh_color_preview
+    then:
+      - lambda: |-
+          int h = id(light_color_h);
+          // Compute RGB from HSV(h, 100%, 100%) directly (accurate 8-bit)
+          int hi = (h / 60) % 6;
+          float f = h / 60.0f - (int)(h / 60.0f);
+          int q = (int)(255.0f * (1.0f - f));
+          int t = (int)(255.0f * f);
+          int r8, g8, b8;
+          switch (hi) {
+            case 0: r8=255; g8=t;   b8=0;   break;
+            case 1: r8=q;   g8=255; b8=0;   break;
+            case 2: r8=0;   g8=255; b8=t;   break;
+            case 3: r8=0;   g8=q;   b8=255; break;
+            case 4: r8=t;   g8=0;   b8=255; break;
+            default: r8=255; g8=0;  b8=q;   break;
+          }
+          lv_color_t col = lv_color_make(r8, g8, b8);
+          lv_obj_set_style_bg_color(id(cw_color_circle), col, LV_STATE_DEFAULT);
+          lv_obj_set_style_arc_color(id(cp_arc), col,
+            LV_PART_INDICATOR);
+          static char hbuf[7];
+          snprintf(hbuf, sizeof(hbuf), "%02X%02X%02X", r8, g8, b8);
+          lv_label_set_text(id(lbl_hex_val), hbuf);
+          // Full 360° arc: rotation=270 puts start at 12 o'clock
+          // actual_angle = 270 + hue
+          float angle_rad = (270.0f + h) * 3.14159f / 180.0f;
+          int cp_radius = 99; // arc: x:12,y:12,w:216 -> outer=108, arc_width=18, mid=99
+          int kx = (int)(cp_radius * cosf(angle_rad));
+          int ky = (int)(cp_radius * sinf(angle_rad));
+      - lvgl.arc.update:
+          id: cp_arc
+          value: !lambda "return id(light_color_h);"
+
+  - id: light_brightness_up
+    then:
+      - lambda: |-
+          int v = id(light_brightness) + 1;
+          if (v > 100) v = 100;
+          id(light_brightness) = v;
+      - script.execute: refresh_light_arc
+      - if:
+          condition:
+            lambda: 'return id(light_on);'
+          then:
+            - light.control:
+                id: led_strip
+                brightness: !lambda "return id(light_brightness) / 100.0f;"
+
+  - id: light_brightness_down
+    then:
+      - lambda: |-
+          int v = id(light_brightness) - 1;
+          if (v < 0) v = 0;
+          id(light_brightness) = v;
+      - script.execute: refresh_light_arc
+      - if:
+          condition:
+            lambda: 'return id(light_on);'
+          then:
+            - light.control:
+                id: led_strip
+                brightness: !lambda "return id(light_brightness) / 100.0f;"
+
+  - id: refresh_light_arc
+    then:
+      - lambda: |-
+          int pct = id(light_brightness);
+          static char buf[4];
+          snprintf(buf, sizeof(buf), "%d", pct);
+          lv_label_set_text(id(lbl_brightness_num), buf);
+          // Center the "N%" pair — no ring collision at any value including 100
+          lv_obj_update_layout(id(lbl_brightness_num));
+          lv_coord_t nw = lv_obj_get_width(id(lbl_brightness_num));
+          int pct_w = 16, gap = 3;
+          int pair_x = 120 - (nw + gap + pct_w) / 2;
+          lv_obj_set_x(id(lbl_brightness_num), pair_x);
+          lv_obj_set_x(id(lbl_brightness_pct), pair_x + nw + gap);
+          // Sync ALL theme-coloured elements from globals
+          lv_color_t tc = lv_color_make(id(light_color_r), id(light_color_g), id(light_color_b));
+          lv_obj_set_style_arc_color(id(light_arc), tc, LV_PART_INDICATOR);
+          lv_obj_set_style_text_color(id(lbl_brightness_pct), tc, LV_STATE_DEFAULT);
+          lv_obj_set_style_text_color(id(lbl_brightness_num), lv_color_hex(0xFFFFFF), LV_STATE_DEFAULT);
+          lv_obj_set_style_border_color(id(btn_palette), tc, LV_STATE_DEFAULT);
+          lv_obj_set_style_shadow_color(id(btn_palette), tc, LV_STATE_DEFAULT);
+          lv_obj_set_style_text_color(id(lbl_light_title), tc, LV_STATE_DEFAULT);
+          // btn_rainbow: 根据gradient_mode决定边框颜色
+          if (id(light_gradient_mode) >= 0) {
+            lv_obj_set_style_border_color(id(btn_rainbow), tc, LV_STATE_DEFAULT);
+            lv_obj_set_style_shadow_color(id(btn_rainbow), tc, LV_STATE_DEFAULT);
+          } else {
+            lv_obj_set_style_border_color(id(btn_rainbow), lv_color_hex(0x262626), LV_STATE_DEFAULT);
+            lv_obj_set_style_shadow_color(id(btn_rainbow), lv_color_hex(0x262626), LV_STATE_DEFAULT);
+          }
+          // btn_dengguang: 根据light_on决定边框颜色
+          if (id(light_on)) {
+            lv_obj_set_style_border_color(id(btn_dengguang), tc, LV_STATE_DEFAULT);
+            lv_obj_set_style_shadow_color(id(btn_dengguang), tc, LV_STATE_DEFAULT);
+          } else {
+            lv_obj_set_style_border_color(id(btn_dengguang), lv_color_hex(0x262626), LV_STATE_DEFAULT);
+            lv_obj_set_style_shadow_color(id(btn_dengguang), lv_color_hex(0x262626), LV_STATE_DEFAULT);
+          }
+      - lvgl.arc.update:
+          id: light_arc
+          value: !lambda "return id(light_brightness);"
+
+  - id: cycle_gradient_effect
+    then:
+      - lambda: |-
+          id(light_gradient_mode) = (id(light_gradient_mode) + 1) % 6;
+          id(light_on) = true;
+      - script.execute: refresh_light_arc
+      - if:
+          condition:
+            lambda: 'return id(light_gradient_mode) == 0;'
+          then:
+            - light.turn_on:
+                id: led_strip
+                brightness: !lambda "return id(light_brightness) / 100.0f;"
+                effect: "Atmosphere Flow Aurora"
+      - if:
+          condition:
+            lambda: 'return id(light_gradient_mode) == 1;'
+          then:
+            - light.turn_on:
+                id: led_strip
+                brightness: !lambda "return id(light_brightness) / 100.0f;"
+                effect: "Atmosphere Flow Sunset"
+      - if:
+          condition:
+            lambda: 'return id(light_gradient_mode) == 2;'
+          then:
+            - light.turn_on:
+                id: led_strip
+                brightness: !lambda "return id(light_brightness) / 100.0f;"
+                effect: "Atmosphere Flow Ocean"
+      - if:
+          condition:
+            lambda: 'return id(light_gradient_mode) == 3;'
+          then:
+            - light.turn_on:
+                id: led_strip
+                brightness: !lambda "return id(light_brightness) / 100.0f;"
+                effect: "Atmosphere Flow Neon"
+      - if:
+          condition:
+            lambda: 'return id(light_gradient_mode) == 4;'
+          then:
+            - light.turn_on:
+                id: led_strip
+                brightness: !lambda "return id(light_brightness) / 100.0f;"
+                effect: "Atmosphere Flow Forest"
+      - if:
+          condition:
+            lambda: 'return id(light_gradient_mode) == 5;'
+          then:
+            - light.turn_on:
+                id: led_strip
+                brightness: !lambda "return id(light_brightness) / 100.0f;"
+                effect: "Atmosphere Flow Ice"
+
+lvgl:
+  pages:
+    - id: page_light
+      bg_color: col_light_bg
+      bg_opa: COVER
+      scrollbar_mode: "OFF"
+      on_load:
+        - lambda: lv_obj_clear_flag(lv_scr_act(), LV_OBJ_FLAG_SCROLLABLE);
+        - script.execute: refresh_light_arc
+      widgets:
+        - obj:
+            align: TOP_LEFT
+            x: 0
+            y: 0
+            width: 240
+            height: 240
+            radius: 120
+            clip_corner: true
+            bg_color: col_light_bg
+            bg_opa: COVER
+            border_width: 0
+            pad_all: 0
+            scrollbar_mode: "OFF"
+            widgets:
+              - arc:
+                  id: light_arc
+                  x: 17
+                  y: 17
+                  width: 205
+                  height: 205
+                  rotation: 90
+                  start_angle: 55
+                  end_angle: 305
+                  value: 75
+                  min_value: 0
+                  max_value: 100
+                  arc_color: col_light_track
+                  arc_width: 20
+                  arc_opa: COVER
+                  arc_rounded: true
+                  adjustable: false
+                  clickable: false
+                  indicator:
+                    arc_color: col_light_orange
+                    arc_width: 20
+                    arc_opa: COVER
+                    arc_rounded: true
+                  knob:
+                    bg_color: 0xFFFFFF
+                    bg_opa: COVER
+                    border_width: 0
+                    width: 16
+                    height: 16
+                    radius: 8
+
+              - obj:
+                  id: light_knob_dot
+                  x: 176
+                  y: 39
+                  width: 20
+                  height: 20
+                  radius: 12
+                  bg_opa: TRANSP
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
+
+              - label:
+                  id: lbl_brightness_num
+                  x: 72
+                  y: 65
+                  text: "75"
+                  text_font: font_light_big
+                  text_color: 0xFFFFFF
+
+              - label:
+                  id: lbl_brightness_pct
+                  x: 152
+                  y: 95
+                  text: "%"
+                  text_font: font_light_pct
+                  text_color: col_light_purple
+
+              - obj:
+                  x: 81
+                  y: 143
+                  width: 78
+                  height: 22
+                  radius: 15
+                  bg_color: col_light_label_bg
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - label:
+                        id: lbl_light_title
+                        align: CENTER
+                        text: "LIGHT"
+                        text_font: font_light_label
+                        text_color: col_light_label_text
+
+              - obj:
+                  id: btn_palette
+                  x: 61
+                  y: 177
+                  width: 36
+                  height: 36
+                  radius: 18
+                  bg_color: col_light_bg
+                  bg_opa: COVER
+                  border_width: 2
+                  border_color: col_light_orange
+                  border_opa: COVER
+                  shadow_width: 8
+                  shadow_color: col_light_orange
+                  shadow_opa: 38%
+                  shadow_spread: 0
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  scroll_dir: NONE
+                  on_click:
+                    - script.execute: open_colorpicker
+                  widgets:
+                    - image:
+                        src: light_img_palette
+                        align: CENTER
+                        clickable: false
+
+              - obj:
+                  id: btn_rainbow
+                  x: 102
+                  y: 177
+                  width: 36
+                  height: 36
+                  radius: 18
+                  bg_color: col_light_bg
+                  bg_opa: COVER
+                  border_width: 2
+                  border_color: col_light_icon_bg
+                  border_opa: COVER
+                  shadow_width: 8
+                  shadow_color: col_light_icon_bg
+                  shadow_opa: 25%
+                  shadow_spread: 0
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  scroll_dir: NONE
+                  on_click:
+                    - script.execute: cycle_gradient_effect
+                  widgets:
+                    - image:
+                        src: light_img_gradient
+                        align: CENTER
+                        clickable: false
+              - obj:
+                  id: btn_dengguang
+                  x: 143
+                  y: 177
+                  width: 36
+                  height: 36
+                  radius: 18
+                  bg_color: col_light_bg
+                  bg_opa: COVER
+                  border_width: 2
+                  border_color: col_light_icon_bg
+                  border_opa: COVER
+                  shadow_width: 8
+                  shadow_color: col_light_icon_bg
+                  shadow_opa: 25%
+                  shadow_spread: 0
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  scroll_dir: NONE
+                  on_click:
+                    - script.execute: toggle_light_onoff
+                  widgets:
+                    - image:
+                        src: light_img_dengguang
+                        align: CENTER
+                        clickable: false
+
+    - id: page_colorpicker
+      bg_color: col_light_bg
+      bg_opa: COVER
+      scrollbar_mode: "OFF"
+      on_load:
+        - lambda: lv_obj_clear_flag(lv_scr_act(), LV_OBJ_FLAG_SCROLLABLE);
+        - script.execute: refresh_color_preview
+      widgets:
+        - obj:
+            align: TOP_LEFT
+            x: 0
+            y: 0
+            width: 240
+            height: 240
+            radius: 120
+            clip_corner: true
+            bg_color: col_light_bg
+            bg_opa: COVER
+            border_width: 0
+            pad_all: 0
+            scrollbar_mode: "OFF"
+            widgets:
+
+              - arc:
+                  id: cp_arc
+                  x: 12
+                  y: 12
+                  width: 216
+                  height: 216
+                  rotation: 270
+                  start_angle: 0
+                  end_angle: 359
+                  value: 252
+                  min_value: 0
+                  max_value: 359
+                  arc_color: col_light_track
+                  arc_width: 18
+                  arc_opa: COVER
+                  arc_rounded: true
+                  adjustable: false
+                  clickable: false
+                  indicator:
+                    arc_color: col_light_orange
+                    arc_width: 18
+                    arc_opa: COVER
+                    arc_rounded: true
+                  knob:
+                    bg_color: 0xFFFFFF
+                    bg_opa: COVER
+                    border_width: 0
+                    width: 16
+                    height: 16
+                    radius: 8
+
+              - obj:
+                  id: cw_color_circle
+                  align: CENTER
+                  x: 0
+                  y: 0
+                  width: 120
+                  height: 120
+                  radius: 60
+                  bg_color: 0xA98FFF
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: true
+                  scrollbar_mode: "OFF"
+                  on_click:
+                    - script.execute: confirm_light_color
+                  widgets:
+                    - label:
+                        id: lbl_hex_val
+                        align: CENTER
+                        text: "A98FFF"
+                        text_font: font_cp_hue
+                        text_color: 0xFFFFFF

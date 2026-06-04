@@ -1,0 +1,36 @@
+# Local ESPHome credentials
+secrets.yaml
+secrets.*.yaml
+!secrets.example.yaml
+*.private.yaml
+.private/
+private/
+
+# ESPHome build/cache output
+.esphome/
+**/.esphome/
+*.bin
+*.elf
+*.map
+*.uf2
+*.factory.bin
+
+# Python/ESPHome local environments
+esphome-env/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Legacy/local generated copies not needed by this project
+mini_code/
+
+# Editor and OS local files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

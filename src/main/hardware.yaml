@@ -1,0 +1,249 @@
+i2c:
+  - id: internal_i2c
+    sda: GPIO11
+    scl: GPIO12
+  - id: external_i2c
+    sda: GPIO13
+    scl: GPIO15
+
+rc522_i2c:
+  - id: nfc_reader
+    i2c_id: internal_i2c
+    address: 0x28
+
+switch:
+  # M5Dial V1.1 battery power hold. GPIO46 must stay HIGH after WAKE,
+  # otherwise the device immediately returns to sleep on battery-only power.
+  - platform: gpio
+    pin: GPIO46
+    id: power_hold
+    internal: true
+    restore_mode: ALWAYS_ON
+
+output:
+  - platform: ledc
+    pin: GPIO3
+    id: buzzer
+  - platform: ledc
+    pin: GPIO9
+    id: backlight_output
+
+rtttl:
+  output: buzzer
+
+spi:
+  id: spi_bus
+  mosi_pin: GPIO5
+  clk_pin: GPIO6
+
+# sensor:
+#   - platform: mpu6886
+#     i2c_id: internal_i2c
+#     address: 0x68
+#     accel_x:
+#       name: "MPU6886 Accel X"
+#     accel_y:
+#       name: "MPU6886 Accel Y"
+#     accel_z:
+#       name: "MPU6886 Accel Z"
+#     gyro_x:
+#       name: "MPU6886 Gyro X"
+#     gyro_y:
+#       name: "MPU6886 Gyro Y"
+#     gyro_z:
+#       name: "MPU6886 Gyro Z"
+#     temperature:
+#       name: "MPU6886 Temperature"
+
+display:
+  - platform: mipi_spi
+    id: round_display
+    model: GC9A01A
+    cs_pin: GPIO7
+    reset_pin: GPIO8
+    dc_pin: GPIO4
+    invert_colors: true
+    data_rate: 40MHz
+    update_interval: never
+    auto_clear_enabled: false
+
+globals:
+  - id: swipe_start_x
+    type: int
+    initial_value: '-1'
+  - id: swipe_cur_x
+    type: int
+    initial_value: '0'
+  - id: swipe_start_y
+    type: int
+    initial_value: '0'
+  - id: swipe_cur_y
+    type: int
+    initial_value: '0'
+
+touchscreen:
+  - platform: ft5x06
+    id: touch
+    i2c_id: internal_i2c
+    address: 0x38
+    interrupt_pin: GPIO14
+    on_touch:
+      - lambda: |-
+          if (id(swipe_start_x) < 0) {
+            id(swipe_start_x) = touch.x;
+            id(swipe_start_y) = touch.y;
+          }
+          id(swipe_cur_x) = touch.x;
+          id(swipe_cur_y) = touch.y;
+    on_release:
+      - lambda: |-
+          int dx = id(swipe_cur_x) - id(swipe_start_x);
+          int dy = id(swipe_cur_y) - id(swipe_start_y);
+          id(swipe_start_x) = -1;
+          if (abs(dx) < 50 || abs(dy) > abs(dx)) return;
+          bool on_clock = !id(in_menu) && !id(in_light) && !id(in_air)
+                       && !id(in_music) && !id(in_timer) && !id(in_fridge)
+                       && !id(in_colorpicker);
+          if (on_clock && dx < 0) {
+            id(open_menu).execute();
+          } else if (id(in_menu) && (dx > 0 || dx < 0)) {
+            id(close_menu).execute();
+          }
+
+light:
+  - platform: monochromatic
+    name: "Backlight"
+    output: backlight_output
+    id: display_backlight
+    restore_mode: ALWAYS_ON
+
+  - platform: esp32_rmt_led_strip
+    rgb_order: GRB
+    pin: GPIO2
+    num_leds: 30
+    chipset: sk6812
+    name: "My Light"
+    id: led_strip
+    restore_mode: ALWAYS_OFF
+    default_transition_length: 0s
+    effects:
+      - addressable_lambda:
+          name: "Atmosphere Flow Aurora"
+          update_interval: 33ms
+          lambda: |-
+            static float phase = 0.0f;
+            phase += 0.010f;
+            if (phase >= 1.0f) phase -= 1.0f;
+            const int n = it.size();
+            const float denom = (n > 1) ? (float)(n - 1) : 1.0f;
+            for (int i = 0; i < n; i++) {
+              float x = (i / denom) + phase;
+              if (x >= 1.0f) x -= 1.0f;
+              float w1 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.00f));
+              float w2 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.33f));
+              float w3 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.66f));
+              uint8_t r = (uint8_t)(20.0f + 75.0f * w1);
+              uint8_t g = (uint8_t)(30.0f + 120.0f * w2);
+              uint8_t b = (uint8_t)(90.0f + 140.0f * w3);
+              it[i] = Color(r, g, b);
+            }
+      - addressable_lambda:
+          name: "Atmosphere Flow Sunset"
+          update_interval: 33ms
+          lambda: |-
+            static float phase = 0.0f;
+            phase += 0.007f;
+            if (phase >= 1.0f) phase -= 1.0f;
+            const int n = it.size();
+            const float denom = (n > 1) ? (float)(n - 1) : 1.0f;
+            for (int i = 0; i < n; i++) {
+              float x = (i / denom) + phase;
+              if (x >= 1.0f) x -= 1.0f;
+              float w1 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.00f));
+              float w2 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.25f));
+              float w3 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.50f));
+              uint8_t r = (uint8_t)(120.0f + 120.0f * w1);
+              uint8_t g = (uint8_t)(20.0f + 60.0f * w2);
+              uint8_t b = (uint8_t)(8.0f + 30.0f * w3);
+              it[i] = Color(r, g, b);
+            }
+      - addressable_lambda:
+          name: "Atmosphere Flow Ocean"
+          update_interval: 33ms
+          lambda: |-
+            static float phase = 0.0f;
+            phase += 0.012f;
+            if (phase >= 1.0f) phase -= 1.0f;
+            const int n = it.size();
+            const float denom = (n > 1) ? (float)(n - 1) : 1.0f;
+            for (int i = 0; i < n; i++) {
+              float x = (i / denom) + phase;
+              if (x >= 1.0f) x -= 1.0f;
+              float w1 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.00f));
+              float w2 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.35f));
+              float w3 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.70f));
+              uint8_t r = (uint8_t)(8.0f + 28.0f * w2);
+              uint8_t g = (uint8_t)(70.0f + 110.0f * w1);
+              uint8_t b = (uint8_t)(110.0f + 130.0f * w3);
+              it[i] = Color(r, g, b);
+            }
+      - addressable_lambda:
+          name: "Atmosphere Flow Neon"
+          update_interval: 33ms
+          lambda: |-
+            static float phase = 0.0f;
+            phase += 0.016f;
+            if (phase >= 1.0f) phase -= 1.0f;
+            const int n = it.size();
+            const float denom = (n > 1) ? (float)(n - 1) : 1.0f;
+            for (int i = 0; i < n; i++) {
+              float x = (i / denom) + phase;
+              if (x >= 1.0f) x -= 1.0f;
+              float w1 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.00f));
+              float w2 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.20f));
+              float w3 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.60f));
+              uint8_t r = (uint8_t)(150.0f + 105.0f * w1);
+              uint8_t g = (uint8_t)(10.0f + 45.0f * w3);
+              uint8_t b = (uint8_t)(120.0f + 130.0f * w2);
+              it[i] = Color(r, g, b);
+            }
+      - addressable_lambda:
+          name: "Atmosphere Flow Forest"
+          update_interval: 33ms
+          lambda: |-
+            static float phase = 0.0f;
+            phase += 0.006f;
+            if (phase >= 1.0f) phase -= 1.0f;
+            const int n = it.size();
+            const float denom = (n > 1) ? (float)(n - 1) : 1.0f;
+            for (int i = 0; i < n; i++) {
+              float x = (i / denom) + phase;
+              if (x >= 1.0f) x -= 1.0f;
+              float w1 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.00f));
+              float w2 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.28f));
+              float w3 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.56f));
+              uint8_t r = (uint8_t)(6.0f + 35.0f * w3);
+              uint8_t g = (uint8_t)(80.0f + 140.0f * w1);
+              uint8_t b = (uint8_t)(10.0f + 55.0f * w2);
+              it[i] = Color(r, g, b);
+            }
+      - addressable_lambda:
+          name: "Atmosphere Flow Ice"
+          update_interval: 33ms
+          lambda: |-
+            static float phase = 0.0f;
+            phase += 0.011f;
+            if (phase >= 1.0f) phase -= 1.0f;
+            const int n = it.size();
+            const float denom = (n > 1) ? (float)(n - 1) : 1.0f;
+            for (int i = 0; i < n; i++) {
+              float x = (i / denom) + phase;
+              if (x >= 1.0f) x -= 1.0f;
+              float w1 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.00f));
+              float w2 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.40f));
+              float w3 = 0.5f + 0.5f * sinf(6.28318f * (x + 0.75f));
+              uint8_t r = (uint8_t)(90.0f + 120.0f * w3);
+              uint8_t g = (uint8_t)(150.0f + 100.0f * w1);
+              uint8_t b = (uint8_t)(170.0f + 85.0f * w2);
+              it[i] = Color(r, g, b);
+            }

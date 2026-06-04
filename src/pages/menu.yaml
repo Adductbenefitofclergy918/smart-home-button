@@ -1,0 +1,827 @@
+font:
+  - file: "gfonts://DM+Sans"
+    id: font_menu_item
+    size: 20
+    bpp: 4
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .-_%/"
+
+  - file: "gfonts://DM+Sans"
+    id: font_menu_center
+    size: 21
+    bpp: 4
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .-_%/"
+
+  - file: "gfonts://DM+Sans"
+    id: font_menu_sub
+    size: 12
+    bpp: 4
+    glyphs: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .-_%/"
+
+color:
+  - id: col_menu_bg
+    hex: "000000"
+  - id: col_menu_pill
+    hex: "0D1537"
+  - id: col_menu_accent
+    hex: "576BFE"
+  - id: col_menu_val
+    hex: "4D5BD3"
+  - id: col_menu_dim
+    hex: "232A38"
+  - id: col_menu_sdot_dim
+    hex: "2A3348"
+
+image:
+  - file: src/assets/images/bulb.png
+    id: menu_img_light
+    type: RGB565
+    transparency: alpha_channel
+    resize: 34x34
+  - file: src/assets/images/ac_logo.png
+    id: menu_img_ac
+    type: RGB565
+    transparency: alpha_channel
+    resize: 32x32
+  - file: src/assets/images/music.png
+    id: menu_img_music
+    type: RGB565
+    transparency: alpha_channel
+    resize: 34x34
+  - file: src/assets/images/fridge.png
+    id: menu_img_fridge
+    type: RGB565
+    transparency: alpha_channel
+    resize: 34x34
+  - file: src/assets/images/timer.png
+    id: menu_img_timer
+    type: RGB565
+    transparency: alpha_channel
+    resize: 32x32
+  - file: src/assets/images/home.png
+    id: menu_img_home
+    type: RGB565
+    transparency: alpha_channel
+    resize: 34x34
+globals:
+  - id: menu_sel
+    type: int
+    initial_value: '0'
+  - id: in_menu
+    type: bool
+    initial_value: 'false'
+  - id: menu_animating
+    type: bool
+    initial_value: 'false'
+  - id: button_debounce
+    type: bool
+    initial_value: 'false'
+
+script:
+  - id: open_menu
+    then:
+      - globals.set: {id: menu_sel, value: '5'}
+      - globals.set: {id: in_menu, value: 'true'}
+      - script.execute: refresh_menu
+      - lvgl.page.show:
+          id: page_menu
+          animation: MOVE_LEFT
+
+  - id: close_menu
+    then:
+      - globals.set: {id: in_menu, value: 'false'}
+      - lvgl.page.show:
+          id: page_clock
+          animation: MOVE_RIGHT
+
+  - id: menu_scroll_up
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(menu_animating);'
+          then:
+            - globals.set: {id: menu_animating, value: 'true'}
+            - lambda: |-
+                // Counterclockwise arc scroll: previous item moves into center.
+                static lv_anim_t a;
+                lv_anim_init(&a);
+                lv_anim_set_var(&a, nullptr);
+                lv_anim_set_values(&a, 0, 100);
+                lv_anim_set_time(&a, 200);
+                lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+                lv_anim_set_exec_cb(&a, [](void * obj, int32_t progress) {
+                  const int SLOT_N = 5;
+                  const int ITEM_N = 6;
+                  const int OFFSETS[5] = {-2, -1, 0, 1, 2};
+                  const float CY = 120.0f;
+                  const float ARC_CX = 162.0f;
+                  const float R = 98.0f;
+                  // Non-uniform spacing: near=60px, far=96px (independent)
+                  auto arc_dy = [](float off) -> float {
+                    const float s = (off >= 0.0f) ? 1.0f : -1.0f;
+                    const float a = fabsf(off);
+                    return s * (a <= 1.0f ? a * 60.0f : 60.0f + (a - 1.0f) * 36.0f);
+                  };
+
+                  lv_obj_t* slots[5] = {
+                    id(slot_far_up), id(slot_near_up), id(slot_center),
+                    id(slot_near_dn), id(slot_far_dn)
+                  };
+
+                  lv_obj_t* icons[5] = {
+                    id(slot_far_up_img),  id(slot_near_up_img),
+                    id(slot_center_img),
+                    id(slot_near_dn_img), id(slot_far_dn_img)
+                  };
+                  lv_obj_t* title_lbls[5] = {
+                    id(slot_far_up_lbl),  id(slot_near_up_lbl),
+                    id(slot_center_lbl),
+                    id(slot_near_dn_lbl), id(slot_far_dn_lbl)
+                  };
+
+                  const float phase = progress / 100.0f;
+                  int center_sub_opa = 0;
+
+                  for (int i = 0; i < SLOT_N; i++) {
+                    const float off = OFFSETS[i] + phase;
+                    float dy = arc_dy(off);
+                    if (dy > R) dy = R;
+                    if (dy < -R) dy = -R;
+
+                    const float theta = asinf(dy / R);
+                    const float x = ARC_CX - R * cosf(theta);
+                    const float y = CY + R * sinf(theta);
+
+                    float closeness = 1.0f - (fabsf(off) / 2.0f);
+                    if (closeness < 0.0f) closeness = 0.0f;
+                    if (closeness > 1.0f) closeness = 1.0f;
+
+                    const int mix = (int)(closeness * 1000.0f);
+                    int w = 40;
+                    int opa_text = 0;
+                    int opa_bg = 0;
+                    int pill_shift = 0;
+
+                    if (mix > 760) {
+                      w = lv_map(mix, 760, 1000, 40, 168);
+                    }
+                    if (mix > 840) {
+                      opa_text = lv_map(mix, 840, 1000, 0, 255);
+                    }
+                    if (mix > 820) {
+                      opa_bg = lv_map(mix, 820, 1000, 0, 255);
+                    }
+                    if (mix > 760) {
+                      pill_shift = lv_map(mix, 760, 1000, 0, 54);
+                    }
+                    const int opa_icon = lv_map(mix, 0, 1000, 96, 255);
+
+                    lv_obj_set_width(slots[i], w);
+                    lv_obj_set_height(slots[i], i == 2 ? 56 : 40);
+                    lv_obj_set_style_radius(slots[i], i == 2 ? 28 : 20, LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(slots[i], lv_color_hex(0x0D1537), LV_PART_MAIN);
+                    lv_obj_set_style_bg_opa(slots[i], opa_bg, LV_PART_MAIN);
+
+                    lv_obj_set_pos(slots[i], (int)(x - 14.0f - 120.0f + pill_shift), (int)(y - (i == 2 ? 28.0f : 20.0f)));
+                    if (i == 2) {
+                      lv_obj_set_pos(id(slot_center_bar),
+                        (int)(x - 14.0f - 120.0f + pill_shift) - 10,
+                        (int)(y - 16.0f));
+                    }
+
+                    lv_obj_set_style_opa(icons[i], opa_icon, LV_PART_MAIN);
+                    lv_obj_set_style_opa(title_lbls[i], opa_text, LV_PART_MAIN);
+
+                    if (i == 2) {
+                      center_sub_opa = opa_text;
+                    }
+                  }
+
+                  lv_obj_set_style_opa(id(slot_center_sub), center_sub_opa, LV_PART_MAIN);
+
+                  // Animate arrow indicator upward
+                  const int dot_offsets[6] = {-35, -21, -7, 7, 21, 35};
+                  int from_dot = id(menu_sel);
+                  int to_dot = ((from_dot - 1) % ITEM_N + ITEM_N) % ITEM_N;
+                  int arrow_y = (int)(dot_offsets[from_dot] + (dot_offsets[to_dot] - dot_offsets[from_dot]) * phase);
+                  lv_obj_add_flag(id(menu_arrow), LV_OBJ_FLAG_HIDDEN);
+                });
+                lv_anim_set_ready_cb(&a, [](lv_anim_t * anim) {
+                  int n = 6;
+                  id(menu_sel) = ((id(menu_sel) - 1) % n + n) % n;
+                  id(refresh_menu).execute();
+                  id(menu_animating) = false;
+                });
+                lv_anim_start(&a);
+
+  - id: menu_scroll_down
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(menu_animating);'
+          then:
+            - globals.set: {id: menu_animating, value: 'true'}
+            - lambda: |-
+                // Clockwise arc scroll: next item moves into center.
+                static lv_anim_t a;
+                lv_anim_init(&a);
+                lv_anim_set_var(&a, nullptr);
+                lv_anim_set_values(&a, 0, 100);
+                lv_anim_set_time(&a, 200);
+                lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+                lv_anim_set_exec_cb(&a, [](void * obj, int32_t progress) {
+                  const int SLOT_N = 5;
+                  const int ITEM_N = 6;
+                  const int OFFSETS[5] = {-2, -1, 0, 1, 2};
+                  const float CY = 120.0f;
+                  const float ARC_CX = 162.0f;
+                  const float R = 98.0f;
+                  // Non-uniform spacing: near=60px, far=96px (independent)
+                  auto arc_dy = [](float off) -> float {
+                    const float s = (off >= 0.0f) ? 1.0f : -1.0f;
+                    const float a = fabsf(off);
+                    return s * (a <= 1.0f ? a * 60.0f : 60.0f + (a - 1.0f) * 36.0f);
+                  };
+
+                  lv_obj_t* slots[5] = {
+                    id(slot_far_up), id(slot_near_up), id(slot_center),
+                    id(slot_near_dn), id(slot_far_dn)
+                  };
+
+                  lv_obj_t* icons[5] = {
+                    id(slot_far_up_img),  id(slot_near_up_img),
+                    id(slot_center_img),
+                    id(slot_near_dn_img), id(slot_far_dn_img)
+                  };
+                  lv_obj_t* title_lbls[5] = {
+                    id(slot_far_up_lbl),  id(slot_near_up_lbl),
+                    id(slot_center_lbl),
+                    id(slot_near_dn_lbl), id(slot_far_dn_lbl)
+                  };
+
+                  const float phase = progress / 100.0f;
+                  int center_sub_opa = 0;
+
+                  for (int i = 0; i < SLOT_N; i++) {
+                    const float off = OFFSETS[i] - phase;
+                    float dy = arc_dy(off);
+                    if (dy > R) dy = R;
+                    if (dy < -R) dy = -R;
+
+                    const float theta = asinf(dy / R);
+                    const float x = ARC_CX - R * cosf(theta);
+                    const float y = CY + R * sinf(theta);
+
+                    float closeness = 1.0f - (fabsf(off) / 2.0f);
+                    if (closeness < 0.0f) closeness = 0.0f;
+                    if (closeness > 1.0f) closeness = 1.0f;
+
+                    const int mix = (int)(closeness * 1000.0f);
+                    int w = 40;
+                    int opa_text = 0;
+                    int opa_bg = 0;
+                    int pill_shift = 0;
+
+                    if (mix > 760) {
+                      w = lv_map(mix, 760, 1000, 40, 168);
+                    }
+                    if (mix > 840) {
+                      opa_text = lv_map(mix, 840, 1000, 0, 255);
+                    }
+                    if (mix > 820) {
+                      opa_bg = lv_map(mix, 820, 1000, 0, 255);
+                    }
+                    if (mix > 760) {
+                      pill_shift = lv_map(mix, 760, 1000, 0, 64);
+                    }
+                    const int opa_icon = lv_map(mix, 0, 1000, 96, 255);
+
+                    lv_obj_set_width(slots[i], w);
+                    lv_obj_set_height(slots[i], i == 2 ? 56 : 40);
+                    lv_obj_set_style_radius(slots[i], i == 2 ? 28 : 20, LV_PART_MAIN);
+                    lv_obj_set_style_bg_color(slots[i], lv_color_hex(0x0D1537), LV_PART_MAIN);
+                    lv_obj_set_style_bg_opa(slots[i], opa_bg, LV_PART_MAIN);
+
+                    lv_obj_set_pos(slots[i], (int)(x - 14.0f - 120.0f + pill_shift), (int)(y - (i == 2 ? 28.0f : 20.0f)));
+                    if (i == 2) {
+                      lv_obj_set_pos(id(slot_center_bar),
+                        (int)(x - 14.0f - 120.0f + pill_shift) - 10,
+                        (int)(y - 16.0f));
+                    }
+
+                    lv_obj_set_style_opa(icons[i], opa_icon, LV_PART_MAIN);
+                    lv_obj_set_style_opa(title_lbls[i], opa_text, LV_PART_MAIN);
+
+                    if (i == 2) {
+                      center_sub_opa = opa_text;
+                    }
+                  }
+
+                  lv_obj_set_style_opa(id(slot_center_sub), center_sub_opa, LV_PART_MAIN);
+
+                  // Animate arrow indicator downward
+                  const int dot_offsets[6] = {-35, -21, -7, 7, 21, 35};
+                  int from_dot = id(menu_sel);
+                  int to_dot = (from_dot + 1) % ITEM_N;
+                  int arrow_y = (int)(dot_offsets[from_dot] + (dot_offsets[to_dot] - dot_offsets[from_dot]) * phase);
+                  lv_obj_add_flag(id(menu_arrow), LV_OBJ_FLAG_HIDDEN);
+                });
+                lv_anim_set_ready_cb(&a, [](lv_anim_t * anim) {
+                  id(menu_sel) = (id(menu_sel) + 1) % 6;
+                  id(refresh_menu).execute();
+                  id(menu_animating) = false;
+                });
+                lv_anim_start(&a);
+
+  - id: menu_confirm
+    then:
+      - lambda: |-
+          ESP_LOGI("menu", "selected item %d", id(menu_sel));
+          int sel = id(menu_sel);
+          if      (sel == 0) { id(open_timer).execute(); }
+          else if (sel == 1) { id(open_fridge).execute(); }
+          else if (sel == 2) { id(open_light).execute(); }
+          else if (sel == 3) { id(open_air).execute(); }
+          else if (sel == 4) { id(open_music).execute(); }
+          else if (sel == 5) { id(close_menu).execute(); }
+          else               { id(close_menu).execute(); }
+
+  - id: refresh_menu
+    then:
+      - lambda: |-
+          const int ITEM_N = 6;
+          const int SLOT_N = 5;
+          const float CY = 120.0f;
+          const float ARC_CX = 162.0f;
+          const float R = 98.0f;
+          // Non-uniform spacing: near=60px, far=96px (independent)
+          auto arc_dy = [](float off) -> float {
+            const float s = (off >= 0.0f) ? 1.0f : -1.0f;
+            const float a = fabsf(off);
+            return s * (a <= 1.0f ? a * 60.0f : 60.0f + (a - 1.0f) * 36.0f);
+          };
+
+          lv_obj_t* icons[5] = {
+            id(slot_far_up_img),  id(slot_near_up_img),
+            id(slot_center_img),
+            id(slot_near_dn_img), id(slot_far_dn_img)
+          };
+          lv_obj_t* title_lbls[5] = {
+            id(slot_far_up_lbl),  id(slot_near_up_lbl),
+            id(slot_center_lbl),
+            id(slot_near_dn_lbl), id(slot_far_dn_lbl)
+          };
+          const int OFFSETS[5] = {-2, -1, 0, 1, 2};
+
+          const char* TITLES[6]    = {"Timer", "Fridge", "Lights", "AC", "Music", "Home"};
+          const char* SUBTITLES[6] = {"Living Rm - Auto", "Living Rm - Off",
+                                      "Living Rm - 75%",  "Living Rm - 24C",
+                                      "Living Rm - Off",  "Back to Main"};
+          const lv_img_dsc_t* IMGS[6] = {
+            id(menu_img_timer)->get_lv_img_dsc(),
+            id(menu_img_fridge)->get_lv_img_dsc(),
+            id(menu_img_light)->get_lv_img_dsc(),
+            id(menu_img_ac)->get_lv_img_dsc(),
+            id(menu_img_music)->get_lv_img_dsc(),
+            id(menu_img_home)->get_lv_img_dsc()
+          };
+          // Per-item accent colors: Timer, Fridge, Lights, AC, Music, Home
+          const uint32_t ACCENT_COLORS[6] = {
+            0xFB923C,  // Timer   - orange
+            0x4ADE80,  // Fridge  - green
+            0xFDC003,  // Lights  - yellow
+            0x5ABBFD,  // AC      - ice blue
+            0xA792E8,  // Music   - purple
+            0x576BFE   // Home    - blue
+          };
+          // Pill bg: darker version of accent
+          const uint32_t PILL_COLORS[6] = {
+            0x2A1200,  // Timer
+            0x0A2A14,  // Fridge
+            0x2A1E00,  // Lights
+            0x001A2A,  // AC
+            0x150A2A,  // Music
+            0x0D1537   // Home
+          };
+          int sel = id(menu_sel);
+
+          lv_obj_t* slots[5] = {
+            id(slot_far_up), id(slot_near_up), id(slot_center),
+            id(slot_near_dn), id(slot_far_dn)
+          };
+
+          for (int slot = 0; slot < SLOT_N; slot++) {
+            int di = ((sel + OFFSETS[slot]) % ITEM_N + ITEM_N) % ITEM_N;
+
+            const float off = OFFSETS[slot];
+            float dy = arc_dy(off);
+            if (dy > R) dy = R;
+            if (dy < -R) dy = -R;
+
+            const float theta = asinf(dy / R);
+            const float x = ARC_CX - R * cosf(theta);
+            const float y = CY + R * sinf(theta);
+
+            float closeness = 1.0f - (fabsf(off) / 2.0f);
+            if (closeness < 0.0f) closeness = 0.0f;
+            if (closeness > 1.0f) closeness = 1.0f;
+            const int mix = (int)(closeness * 1000.0f);
+
+            int w = 40;
+            int opa_text = 0;
+            int opa_bg = 0;
+            int pill_shift = 0;
+            if (mix > 760) {
+              w = lv_map(mix, 760, 1000, 40, 168);
+            }
+            if (mix > 840) {
+              opa_text = lv_map(mix, 840, 1000, 0, 255);
+            }
+            if (mix > 820) {
+              opa_bg = lv_map(mix, 820, 1000, 0, 255);
+            }
+            if (mix > 760) {
+              pill_shift = lv_map(mix, 760, 1000, 0, 54);
+            }
+            const int opa_icon = lv_map(mix, 0, 1000, 96, 255);
+
+            lv_obj_set_width(slots[slot], w);
+            lv_obj_set_height(slots[slot], slot == 2 ? 56 : 40);
+            lv_obj_set_style_radius(slots[slot], slot == 2 ? 28 : 20, LV_PART_MAIN);
+            // Use per-item pill color for center slot, dim for others
+            if (slot == 2) {
+              lv_obj_set_style_bg_color(slots[slot], lv_color_hex(PILL_COLORS[di]), LV_PART_MAIN);
+              lv_obj_set_style_bg_opa(slots[slot], 128, LV_PART_MAIN); // Center 50% opacity
+              lv_obj_set_style_border_color(slots[slot], lv_color_hex(ACCENT_COLORS[di]), LV_PART_MAIN);
+              lv_obj_set_style_border_width(slots[slot], 2, LV_PART_MAIN);
+              lv_obj_set_style_border_opa(slots[slot], 255, LV_PART_MAIN);
+            } else {
+              lv_obj_set_style_bg_color(slots[slot], lv_color_hex(0x0D1537), LV_PART_MAIN);
+              lv_obj_set_style_bg_opa(slots[slot], opa_bg, LV_PART_MAIN);
+              lv_obj_set_style_border_width(slots[slot], 0, LV_PART_MAIN);
+            }
+
+            lv_obj_set_pos(slots[slot], (int)(x - 14.0f - 120.0f + pill_shift), (int)(y - (slot == 2 ? 28.0f : 20.0f)));
+
+            // Update accent bar position to follow center slot
+            if (slot == 2) {
+              int bx = (int)(x - 14.0f - 120.0f + pill_shift) - 10;
+              int by = (int)(y - 16.0f);
+              lv_obj_set_pos(id(slot_center_bar), bx, by);
+              lv_obj_set_style_bg_color(id(slot_center_bar), lv_color_hex(ACCENT_COLORS[di]), LV_PART_MAIN);
+              lv_obj_set_style_opa(id(slot_center_bar), 0, LV_PART_MAIN); // Hide the bar
+            }
+
+            lv_label_set_text(title_lbls[slot], TITLES[di]);
+            // Center slot title uses accent color, others use dim
+            if (slot == 2) {
+              lv_obj_set_style_text_color(title_lbls[slot], lv_color_hex(ACCENT_COLORS[di]), LV_PART_MAIN);
+            } else {
+              lv_obj_set_style_text_color(title_lbls[slot], lv_color_hex(0x232A38), LV_PART_MAIN);
+            }
+            lv_obj_set_style_opa(title_lbls[slot], slot == 2 ? 255 : opa_text, LV_PART_MAIN);
+            lv_img_set_src(icons[slot], IMGS[di]);
+            lv_obj_set_style_opa(icons[slot], slot == 2 ? 255 : opa_icon, LV_PART_MAIN);
+          }
+
+          {
+            int ci = ((sel) % ITEM_N + ITEM_N) % ITEM_N;
+            lv_label_set_text(id(slot_center_sub), SUBTITLES[ci]);
+            lv_obj_set_style_opa(id(slot_center_sub), 255, LV_PART_MAIN);
+            // Sub label color matches accent
+            lv_obj_set_style_text_color(id(slot_center_sub), lv_color_hex(ACCENT_COLORS[ci]), LV_PART_MAIN);
+          }
+
+          // Left accent bar: update color and reposition to match center slot
+          {
+            int ci = ((sel) % ITEM_N + ITEM_N) % ITEM_N;
+            lv_obj_set_style_bg_color(id(slot_center_bar), lv_color_hex(ACCENT_COLORS[ci]), LV_PART_MAIN);
+            // Remove border from pill itself
+            lv_obj_set_style_border_width(id(slot_center), 0, LV_PART_MAIN);
+          }
+
+          // Indicator dots: selected = triangle shape (wide-bottom trapezoid via radius=0)
+          // Use width to simulate triangle: selected wider at bottom
+          const int dot_offsets[6] = {-35, -21, -7, 7, 21, 35};
+          lv_obj_t* sdots[6] = {
+            id(sdot_0), id(sdot_1), id(sdot_2), id(sdot_3), id(sdot_4), id(sdot_5)
+          };
+          for (int d = 0; d < ITEM_N; d++) {
+            if (d == sel) {
+              lv_obj_set_style_bg_color(sdots[d], lv_color_hex(ACCENT_COLORS[d]), LV_PART_MAIN);
+              lv_obj_set_style_opa(sdots[d], 255, LV_PART_MAIN);
+              lv_obj_set_size(sdots[d], 8, 8);
+              lv_obj_set_style_radius(sdots[d], 0, LV_PART_MAIN);
+              lv_obj_set_style_transform_angle(sdots[d], 450, LV_PART_MAIN); // 45deg = triangle look
+            } else {
+              lv_obj_set_style_bg_color(sdots[d], lv_color_hex(0x2A3348), LV_PART_MAIN);
+              lv_obj_set_style_opa(sdots[d], 180, LV_PART_MAIN);
+              lv_obj_set_size(sdots[d], 4, 4);
+              lv_obj_set_style_radius(sdots[d], 2, LV_PART_MAIN);
+              lv_obj_set_style_transform_angle(sdots[d], 0, LV_PART_MAIN);
+            }
+          }
+
+          // Hide the old arrow indicator (no longer needed with triangle dots)
+          lv_obj_add_flag(id(menu_arrow), LV_OBJ_FLAG_HIDDEN);
+
+lvgl:
+  pages:
+    - id: page_menu
+      bg_color: col_menu_bg
+      bg_opa: COVER
+      scrollbar_mode: "OFF"
+      widgets:
+
+        - obj:
+            align: CENTER
+            width: 240
+            height: 240
+            radius: 120
+            clip_corner: true
+            bg_color: col_menu_bg
+            border_width: 0
+            scrollbar_mode: "OFF"
+            pad_all: 0
+            widgets:
+
+              - obj:
+                  id: menu_stack
+                  align: TOP_LEFT
+                  x: 0
+                  y: 0
+                  width: 240
+                  height: 240
+                  bg_opa: TRANSP
+                  border_width: 0
+                  scrollbar_mode: "OFF"
+                  pad_all: 0
+                  clickable: false
+                  widgets:
+
+                    - obj:
+                        id: slot_far_up
+                        align: TOP_MID
+                        y: 6
+                        width: 180
+                        height: 40
+                        bg_opa: TRANSP
+                        border_width: 0
+                        scrollbar_mode: "OFF"
+                        pad_all: 0
+                        clickable: false
+                        widgets:
+                          - image:
+                              id: slot_far_up_img
+                              align: LEFT_MID
+                              x: 2
+                              src: menu_img_timer
+                          - label:
+                              id: slot_far_up_lbl
+                              align: LEFT_MID
+                              x: 38
+                              text_font: font_menu_item
+                              text_color: col_menu_dim
+                              text: "Timer"
+                              text_opa: 25%
+
+                    - obj:
+                        id: slot_near_up
+                        align: TOP_MID
+                        y: 42
+                        width: 180
+                        height: 40
+                        bg_opa: TRANSP
+                        border_width: 0
+                        scrollbar_mode: "OFF"
+                        pad_all: 0
+                        clickable: false
+                        widgets:
+                          - image:
+                              id: slot_near_up_img
+                              align: LEFT_MID
+                              x: 2
+                              src: menu_img_fridge
+                          - label:
+                              id: slot_near_up_lbl
+                              align: LEFT_MID
+                              x: 38
+                              text_font: font_menu_item
+                              text_color: col_menu_dim
+                              text: "Fridge"
+                              text_opa: 50%
+
+                    - obj:
+                        id: slot_center_bar
+                        align: TOP_MID
+                        y: 108
+                        x: -96
+                        width: 6
+                        height: 32
+                        radius: 3
+                        bg_color: col_menu_accent
+                        bg_opa: TRANSP
+                        border_width: 0
+                        scrollbar_mode: "OFF"
+                        pad_all: 0
+                        clickable: false
+                    - obj:
+                        id: slot_center
+                        align: TOP_MID
+                        y: 102
+                        width: 168
+                        height: 56
+                        radius: 20
+                        bg_color: col_menu_pill
+                        bg_opa: COVER
+                        border_width: 0
+                        scrollbar_mode: "OFF"
+                        pad_all: 0
+                        clickable: false
+                        widgets:
+                          - image:
+                              id: slot_center_img
+                              align: LEFT_MID
+                              x: 14
+                              src: menu_img_light
+                          - label:
+                              id: slot_center_lbl
+                              x: 54
+                              y: 6
+                              text_font: font_menu_item
+                              text_color: col_text_pri
+                              width: 106
+                              long_mode: DOT
+                              text: "Scene"
+                          - label:
+                              id: slot_center_sub
+                              x: 54
+                              y: 30
+                              text_font: font_menu_sub
+                              text_color: col_menu_val
+                              width: 106
+                              long_mode: DOT
+                              text: "Model Sleep"
+
+                    - obj:
+                        id: slot_near_dn
+                        align: TOP_MID
+                        y: 162
+                        width: 180
+                        height: 40
+                        bg_opa: TRANSP
+                        border_width: 0
+                        scrollbar_mode: "OFF"
+                        pad_all: 0
+                        clickable: false
+                        widgets:
+                          - image:
+                              id: slot_near_dn_img
+                              align: LEFT_MID
+                              x: 2
+                              src: menu_img_ac
+                          - label:
+                              id: slot_near_dn_lbl
+                              align: LEFT_MID
+                              x: 38
+                              text_font: font_menu_item
+                              text_color: col_menu_dim
+                              text: "AC"
+                              text_opa: 50%
+
+                    - obj:
+                        id: slot_far_dn
+                        align: TOP_MID
+                        y: 198
+                        width: 180
+                        height: 40
+                        bg_opa: TRANSP
+                        border_width: 0
+                        scrollbar_mode: "OFF"
+                        pad_all: 0
+                        clickable: false
+                        widgets:
+                          - image:
+                              id: slot_far_dn_img
+                              align: LEFT_MID
+                              x: 2
+                              src: menu_img_music
+                          - label:
+                              id: slot_far_dn_lbl
+                              align: LEFT_MID
+                              x: 38
+                              text_font: font_menu_item
+                              text_color: col_menu_dim
+                              text: "Music"
+                              text_opa: 25%
+
+              - obj:
+                  id: btn_menu_home
+                  align: TOP_RIGHT
+                  x: -8
+                  y: 8
+                  width: 34
+                  height: 34
+                  radius: 17
+                  bg_color: col_menu_pill
+                  bg_opa: TRANSP
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
+                  widgets:
+                    - image:
+                        src: menu_img_home
+                        align: CENTER
+                        opa: TRANSP
+
+              - obj:
+                  id: sdot_0
+                  align: RIGHT_MID
+                  x: -10
+                  y: -35
+                  width: 5
+                  height: 5
+                  radius: 3
+                  bg_color: col_menu_sdot_dim
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
+              - obj:
+                  id: sdot_1
+                  align: RIGHT_MID
+                  x: -10
+                  y: -21
+                  width: 5
+                  height: 5
+                  radius: 3
+                  bg_color: col_menu_sdot_dim
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
+              - obj:
+                  id: sdot_2
+                  align: RIGHT_MID
+                  x: -10
+                  y: -7
+                  width: 5
+                  height: 5
+                  radius: 3
+                  bg_color: col_menu_accent
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
+              - obj:
+                  id: sdot_3
+                  align: RIGHT_MID
+                  x: -10
+                  y: 7
+                  width: 5
+                  height: 5
+                  radius: 3
+                  bg_color: col_menu_sdot_dim
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
+              - obj:
+                  id: sdot_4
+                  align: RIGHT_MID
+                  x: -10
+                  y: 21
+                  width: 5
+                  height: 5
+                  radius: 3
+                  bg_color: col_menu_sdot_dim
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
+              - obj:
+                  id: sdot_5
+                  align: RIGHT_MID
+                  x: -10
+                  y: 35
+                  width: 5
+                  height: 5
+                  radius: 3
+                  bg_color: col_menu_sdot_dim
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
+
+              - obj:
+                  id: menu_arrow
+                  align: RIGHT_MID
+                  x: -26
+                  y: -35
+                  width: 4
+                  height: 16
+                  radius: 2
+                  bg_color: col_menu_accent
+                  bg_opa: COVER
+                  border_width: 0
+                  clickable: false
+                  scrollbar_mode: "OFF"
